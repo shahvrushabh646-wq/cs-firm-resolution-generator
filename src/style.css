@@ -8,3 +8,13 @@
 .company-library-toolbar input{flex:1;min-width:220px;border:1px solid var(--line,#dce3eb);border-radius:10px;padding:11px 13px;background:var(--surface,#fff);color:inherit;font:inherit;outline:none}
 .company-library-toolbar input:focus{border-color:#6886d8;box-shadow:0 0 0 3px rgba(75,112,210,.12)}
 @media(max-width:700px){.company-library-toolbar{align-items:stretch;padding:12px;gap:9px}.company-count{width:100%}.company-library-toolbar input{min-width:0;width:100%;flex-basis:100%}.company-library-toolbar .btn{justify-content:center}}
+
+.uploaded-letterhead-preview{margin:-8px -9px 18px;padding:0 0 12px;border-bottom:1px dashed #cbd6e4}
+.uploaded-file-label{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:7px 9px;border-radius:5px;background:#edf8f1;color:#176f47;font:600 10px Inter,Arial,sans-serif;overflow-wrap:anywhere}
+.docx-rendered{font-family:'Times New Roman',serif;color:#1d2d45;font-size:11px;line-height:1.35;overflow-wrap:anywhere;max-height:420px;overflow:auto;padding:8px 5px}
+.docx-rendered p{margin:0 0 7px}
+.docx-rendered table{border-collapse:collapse;max-width:100%;width:100%;font:inherit}
+.docx-rendered td,.docx-rendered th{border:1px solid #d7dee8;padding:3px;vertical-align:top}
+.docx-rendered img{max-width:100%;height:auto;object-fit:contain}
+.docx-rendered ul,.docx-rendered ol{padding-left:20px}
+.preview-disclaimer{font:9px/1.45 Inter,Arial,sans-serif;color:#75869b;margin:8px 4px 0}
