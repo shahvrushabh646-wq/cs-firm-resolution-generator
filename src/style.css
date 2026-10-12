@@ -25,3 +25,5 @@
 .docx-rendered section.docx{margin:0 auto 12px!important;box-shadow:0 1px 5px #122c4d18!important;max-width:100%;}
 .docx-rendered img{max-width:100%;height:auto}
 .docx-rendered .preview-error{font:12px/1.5 Inter,Arial,sans-serif;color:#a33;padding:10px}
+
+.preview-status{font:10px/1.45 Inter,Arial,sans-serif;color:#637792;margin:8px 4px;padding:8px 10px;background:#f3f7fc;border-radius:5px}.preview-success{color:#176f47;background:#effaf4}.preview-fallback{color:#8b5a08;background:#fff8e8}.docx-rendered .preview-status{font-family:Inter,Arial,sans-serif}
