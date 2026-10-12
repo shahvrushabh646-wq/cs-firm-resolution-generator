@@ -4,6 +4,7 @@ import {Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel} from 
 import mammoth from 'mammoth/mammoth.browser';
 import {renderAsync as renderDocxPreview} from 'docx-preview';
 import JSZip from 'jszip';
+import { generateMergedResolutionDocx } from './utils/generateMergedResolutionDocx.js';
 import {FileText, Users, History, Plus, Trash2, Pencil, Download, Eye, Upload, CheckCircle2, FileSpreadsheet, ShieldCheck, X, RefreshCw} from 'lucide-react';
 import LetterheadPreview from './LetterheadPreview.jsx';
 import './style.css';
@@ -22,17 +23,9 @@ function base64ToArrayBuffer(base64){const raw=String(base64||'').trim();const p
 function base64ToBytes(base64){return new Uint8Array(base64ToArrayBuffer(base64))}
 async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadAsync(base64ToBytes(base64));const files=Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n));let changed=0;for(const name of files){const file=zip.file(name);if(!file)continue;let xml=await file.async('string');for(const [key,value] of Object.entries(replacements)){if(value===undefined||value===null||value==='')continue;const token='['+key+']';const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');const next=xml.split(token).join(escaped);if(next!==xml)changed+=(xml.split(token).length-1);xml=next}zip.file(name,xml)}return {blob:await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),changed}}
 async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements,template){
- // The uploaded company letterhead remains the DOCX package we build from.
- // Do not copy XML from the resolution DOCX: its styles, images, numbering and
- // relationship IDs belong to a different package and can corrupt formatting.
- const letterZip=await JSZip.loadAsync(base64ToBytes(letterheadBase64));
  if(!templateBase64) throw new Error('Upload a resolution Word template before generating.');
- const letterDoc=letterZip.file('word/document.xml');
- if(!letterDoc) throw new Error('The uploaded letterhead is missing its main document part.');
- let letterXml=await letterDoc.async('string');
- if(!/<w:body[^>]*>[\s\S]*?<\/w:body>/.test(letterXml)) throw new Error('Could not read the letterhead Word document body.');
- const escapeXml=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
- const resolveText=value=>String(value??'').replace(/\[([A-Z_]+)\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
+ const escapeXml=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+ const resolveText=value=>String(value??'').replace(/\\[([A-Z_]+)\\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
  const paragraph=(text,opts={})=>{
   const content=escapeXml(resolveText(text));
   const align=opts.align?' <w:jc w:val="'+opts.align+'"/>':'';
@@ -41,23 +34,15 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
   return '<w:p><w:pPr>'+align+'</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'+bold+'<w:sz w:val="'+size+'"/></w:rPr><w:t xml:space="preserve">'+content+'</w:t></w:r></w:p>';
  };
  const resolutionParts=[];
- resolutionParts.push('<w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>');
  if(template?.title) resolutionParts.push(paragraph(template.title,{align:'center',bold:true,size:28}));
  if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:24}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
- for(const block of body.split(/\n\s*\n/)){
-  for(const line of block.split(/\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
+ for(const block of body.split(/\\n\\s*\\n/)){
+  for(const line of block.split(/\\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
  }
- // Word requires sectPr, when present, to remain the final child of w:body.
- const bodyClose=letterXml.lastIndexOf('</w:body>');
- if(bodyClose<0) throw new Error('Could not find the end of the letterhead document body.');
- const bodyOpen=letterXml.indexOf('>',letterXml.indexOf('<w:body'))+1;
- const sectionStart=letterXml.lastIndexOf('<w:sectPr',bodyClose);
- const insertAt=sectionStart>=bodyOpen?sectionStart:bodyClose;
- letterXml=letterXml.slice(0,insertAt)+resolutionParts.join('')+letterXml.slice(insertAt);
- letterZip.file('word/document.xml',letterXml);
- return {blob:await letterZip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),changed:0};
+ const blob=await generateMergedResolutionDocx(letterheadBase64,resolutionParts.join(''),{});
+ return {blob,changed:0};
 }
 function App(){
  const [companies,setCompanies]=useState(()=>read('csrg_companies',starterCompanies));
