@@ -25,7 +25,7 @@ async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadA
 async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements,template){
  if(!templateBase64) throw new Error('Upload a resolution Word template before generating.');
  const escapeXml=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
- const resolveText=value=>String(value??'').replace(/\\[([A-Z_]+)\\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
+ const resolveText=value=>String(value??'').replace(/\[([A-Z_]+)\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
  const paragraph=(text,opts={})=>{
   const content=escapeXml(resolveText(text));
   const align=opts.align?' <w:jc w:val="'+opts.align+'"/>':'';
@@ -38,8 +38,8 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
  if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:24}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
- for(const block of body.split(/\\n\\s*\\n/)){
-  for(const line of block.split(/\\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
+ for(const block of body.split(/\n\s*\n/)){
+  for(const line of block.split(/\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
  }
  const blob=await generateMergedResolutionDocx(letterheadBase64,resolutionParts.join(''),{});
  return {blob,changed:0};
