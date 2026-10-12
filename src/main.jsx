@@ -24,6 +24,19 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
  for(const name of files){const file=zip.file(name);if(!file)continue;let xml=await file.async('string');for(const [key,value] of Object.entries(replacements)){if(value===undefined||value===null||value==='')continue;const token='['+key+']';const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');const next=xml.split(token).join(escaped);if(next!==xml)changed+=(xml.split(token).length-1);xml=next}zip.file(name,xml)}
  if(templateBase64){
   const templateZip=await JSZip.loadAsync(base64ToBytes(templateBase64));
+  // Apply field replacements inside the uploaded resolution master before its body is copied.
+  const sourceParts=Object.keys(templateZip.files).filter(n=>n==='word/document.xml'||/^word\/header\d+\.xml$/.test(n)||/^word\/footer\d+\.xml$/.test(n));
+  for(const part of sourceParts){
+   const file=templateZip.file(part);if(!file)continue;
+   let xml=await file.async('string');
+   for(const [key,value] of Object.entries(replacements)){
+    if(value===undefined||value===null||String(value)==='')continue;
+    const token='['+key+']';
+    const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    xml=xml.split(token).join(escaped);
+   }
+   templateZip.file(part,xml);
+  }
   const baseDoc=zip.file('word/document.xml'), sourceDoc=templateZip.file('word/document.xml');
   if(baseDoc&&sourceDoc){
    const baseXml=await baseDoc.async('string'),sourceXml=await sourceDoc.async('string');
