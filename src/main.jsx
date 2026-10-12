@@ -18,45 +18,24 @@ function bytesToBase64(buffer){let binary='';const bytes=new Uint8Array(buffer);
 function base64ToBytes(base64){const binary=atob(base64);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes}
 async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadAsync(base64ToBytes(base64));const files=Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n));let changed=0;for(const name of files){const file=zip.file(name);if(!file)continue;let xml=await file.async('string');for(const [key,value] of Object.entries(replacements)){if(value===undefined||value===null||value==='')continue;const token='['+key+']';const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');const next=xml.split(token).join(escaped);if(next!==xml)changed+=(xml.split(token).length-1);xml=next}zip.file(name,xml)}return {blob:await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),changed}}
 async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements){
+ // The uploaded company DOCX is the authoritative master. Do not rebuild its body
+ // from extracted text or import paragraphs from another DOCX, because doing so
+ // can lose styles, images, relationships, tables, and layout.
  const zip=await JSZip.loadAsync(base64ToBytes(letterheadBase64));
  const files=Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n));
  let changed=0;
- for(const name of files){const file=zip.file(name);if(!file)continue;let xml=await file.async('string');for(const [key,value] of Object.entries(replacements)){if(value===undefined||value===null||value==='')continue;const token='['+key+']';const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');const next=xml.split(token).join(escaped);if(next!==xml)changed+=(xml.split(token).length-1);xml=next}zip.file(name,xml)}
- if(templateBase64){
-  const templateZip=await JSZip.loadAsync(base64ToBytes(templateBase64));
-  // Apply field replacements inside the uploaded resolution master before its body is copied.
-  const sourceParts=Object.keys(templateZip.files).filter(n=>n==='word/document.xml'||/^word\/header\d+\.xml$/.test(n)||/^word\/footer\d+\.xml$/.test(n));
-  for(const part of sourceParts){
-   const file=templateZip.file(part);if(!file)continue;
-   let xml=await file.async('string');
-   for(const [key,value] of Object.entries(replacements)){
-    if(value===undefined||value===null||String(value)==='')continue;
-    const token='['+key+']';
-    const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    xml=xml.split(token).join(escaped);
-   }
-   templateZip.file(part,xml);
+ for(const name of files){
+  const file=zip.file(name);if(!file)continue;
+  let xml=await file.async('string');
+  for(const [key,value] of Object.entries(replacements)){
+   if(value===undefined||value===null||String(value)==='')continue;
+   const token='['+key+']';
+   const escaped=String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+   const next=xml.split(token).join(escaped);
+   if(next!==xml)changed+=(xml.split(token).length-1);
+   xml=next;
   }
-  const baseDoc=zip.file('word/document.xml'), sourceDoc=templateZip.file('word/document.xml');
-  if(baseDoc&&sourceDoc){
-   const baseXml=await baseDoc.async('string'),sourceXml=await sourceDoc.async('string');
-   const parser=new DOMParser(),baseDom=parser.parseFromString(baseXml,'application/xml'),sourceDom=parser.parseFromString(sourceXml,'application/xml');
-   const ns='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-   const baseBody=baseDom.getElementsByTagNameNS(ns,'body')[0],sourceBody=sourceDom.getElementsByTagNameNS(ns,'body')[0];
-   if(baseBody&&sourceBody){
-    const sectPr=Array.from(baseBody.children).find(n=>n.localName==='sectPr');
-    const sourceNodes=Array.from(sourceBody.children).filter(n=>n.localName!=='sectPr');
-    const hasMarker=baseXml.includes('[RESOLUTION_BODY]');
-    if(hasMarker){
-     const paragraphs=sourceNodes.map(n=>baseDom.importNode(n,true));
-     const marker=Array.from(baseBody.getElementsByTagNameNS(ns,'t')).find(n=>(n.textContent||'').includes('[RESOLUTION_BODY]'));
-     if(marker){marker.textContent=marker.textContent.replace('[RESOLUTION_BODY]','');const paragraph=marker.parentNode?.parentNode?.parentNode;if(paragraph&&paragraph.parentNode){for(const node of paragraphs)paragraph.parentNode.insertBefore(node,paragraph.nextSibling)}}
-    }else{
-     for(const node of sourceNodes){const imported=baseDom.importNode(node,true);if(sectPr)baseBody.insertBefore(imported,sectPr);else baseBody.appendChild(imported)}
-    }
-    zip.file('word/document.xml',new XMLSerializer().serializeToString(baseDom));
-   }
-  }
+  zip.file(name,xml);
  }
  return {blob:await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),changed};
 }
@@ -80,10 +59,10 @@ function App(){
  async function saveModal(){const type=modal.type;let listKey=type==='company'?'companies':type==='template'?'templates':'signatories';let list=type==='company'?companies:type==='template'?templates:signatories;let setter=type==='company'?setCompanies:type==='template'?setTemplates:setSignatories;const item={...draft,id:modal.itemId||crypto.randomUUID()};if(!item.name?.trim()&&type==='company'&&item.letterheadText?.trim()){item.name=item.letterheadText.split(/\r?\n/).map(s=>s.trim()).find(Boolean)||item.letterheadFileName||'Uploaded company letterhead'}if(!item.name?.trim()){setMessage('Please enter a name or upload the original Word file first.');return}if(type==='company'&&letterheadFile){item.letterheadFileName=letterheadFile.name;item.letterheadText=letterheadFile.text||'';item.letterheadData=letterheadFile.data||''}setter(modal.itemId?list.map(x=>x.id===modal.itemId?item:x):[...list,item]);if(type==='company')setCompanyId(item.id);if(type==='template')setTemplateId(item.id);if(type==='signatory')setSignatoryId(item.id);setModal(null);setLetterheadFile(null);setMessage('Saved successfully in this browser. Export a backup before clearing browser data.')}
  function removeItem(type,id){const label=type==='company'?'company letterhead':type==='template'?'resolution template':'signatory';if(!confirm(`Remove this ${label} from the saved library? Previously generated Word files are not affected.`))return;if(type==='company'){setCompanies(p=>p.filter(x=>x.id!==id));if(companyId===id)setCompanyId('')}else if(type==='template'){setTemplates(p=>p.filter(x=>x.id!==id));if(templateId===id)setTemplateId('')}else{setSignatories(p=>p.filter(x=>x.id!==id));if(signatoryId===id)setSignatoryId('')}setMessage(`${label} removed from the library.`)}
  function addPlaceholder(key){setDraft(p=>({...p,body:(p.body||'')+` [${key}]`}))}
- async function generate(){if(!company){setMessage('Add/select a company letterhead first.');return}if(!template){setMessage('Add/select a resolution template first.');return}if(!signatory){setMessage('Add/select an authorised signatory first.');return}if((template.name||'').toLowerCase().includes('auditor')&&(!fields.auditorName.trim()||!fields.frn.trim())){setMessage('Enter both Auditor name and Firm Registration Number (FRN) before generating this auditor resolution.');return}if(company.letterheadData&&!template.sourceDocxData){setMessage('Cannot generate a complete resolution from a letterhead-only file. Upload the full letterhead + resolution Word document under Resolution Templates, then select it here.');setPage('Resolution Templates');return}setBusy(true);try{
+ async function generate(){if(!company){setMessage('Add/select a company letterhead first.');return}if(!template){setMessage('Add/select a resolution template first.');return}if(!signatory){setMessage('Add/select an authorised signatory first.');return}if((template.name||'').toLowerCase().includes('auditor')&&(!fields.auditorName.trim()||!fields.frn.trim())){setMessage('Enter both Auditor name and Firm Registration Number (FRN) before generating this auditor resolution.');return}if(company.letterheadData&&!template.sourceDocxData){setMessage('Your uploaded letterhead will be kept as the exact Word master. To include the resolution wording in the same file, upload the complete letterhead + resolution document as the company letterhead master; this app will not rebuild or overwrite its content.');}setBusy(true);try{
  const replacements={COMPANY_NAME:fields.companyName||company.name,CIN:fields.cin||company.cin,REGISTERED_OFFICE:fields.registeredOffice||company.registeredOffice,MEETING_DATE:fields.meetingDate,DATE:fields.meetingDate,PLACE:fields.place,AUDITOR_NAME:fields.auditorName,FRN:fields.frn,BANK_NAME:fields.bankName,BRANCH:fields.branch,DIRECTOR_NAME:fields.directorName||signatory.name,SIGNATORY_NAME:signatory.name,DESIGNATION:signatory.designation||'Authorised Signatory',DIN:signatory.din,EFFECTIVE_DATE:fields.effectiveDate};
  let blob,filename;
- if(company.letterheadData){const result=await makeLetterheadMaster(company.letterheadData,template.sourceDocxData||null,replacements);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';setMessage(template.sourceDocxData?'Generated using your uploaded company Word file as the base. Existing company name, CIN and registered address remain as in that file; resolution content was inserted. Review page breaks before filing.':'Generated using your exact uploaded Word file as the base. Company name, CIN, registered address, header/footer and fonts are not manually recreated; the resolution content is added to the document body. Please review page breaks and the final Word output.');}else if(template.sourceDocxData){const result=await makeTemplateDocx(template.sourceDocxData,replacements);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';if(result.changed===0)setMessage('Downloaded the original Word layout unchanged. No supported [PLACEHOLDER] tokens were found to replace. For automatic updates, add placeholders such as [COMPANY_NAME] directly in the master .docx; keep each placeholder together in one text run.');}
+ if(company.letterheadData){const result=await makeLetterheadMaster(company.letterheadData,template.sourceDocxData||null,replacements);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';setMessage('Generated from your uploaded Word letterhead master. Its original document content, layout, tables, images, fonts, headers and footers are kept; only matching placeholders are replaced. For a complete resolution, upload the full resolution document as this company master.');}else if(template.sourceDocxData){const result=await makeTemplateDocx(template.sourceDocxData,replacements);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';if(result.changed===0)setMessage('Downloaded the original Word layout unchanged. No supported [PLACEHOLDER] tokens were found to replace. For automatic updates, add placeholders such as [COMPANY_NAME] directly in the master .docx; keep each placeholder together in one text run.');}
  else {let paragraphs=[];if(company.letterheadText?.trim()){for(const line of company.letterheadText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)){paragraphs.push(new Paragraph({text:line,alignment:AlignmentType.CENTER,spacing:{after:60}}))}}if(!paragraphs.length){paragraphs.push(new Paragraph({text:company.name.toUpperCase(),alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_2}));if(company.cin)paragraphs.push(new Paragraph({text:`CIN: ${company.cin}`,alignment:AlignmentType.CENTER}));if(company.registeredOffice)paragraphs.push(new Paragraph({text:`Registered Office: ${company.registeredOffice}`,alignment:AlignmentType.CENTER}))}paragraphs.push(new Paragraph({text:'',spacing:{after:200}}));paragraphs.push(new Paragraph({text:template.title||'BOARD RESOLUTION',alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_1,spacing:{after:80}}));if(template.subtitle)paragraphs.push(new Paragraph({text:template.subtitle,alignment:AlignmentType.CENTER,spacing:{after:240}}));for(const para of bodyText.split(/\n\s*\n/)){paragraphs.push(new Paragraph({children:[new TextRun({text:para,font:'Times New Roman',size:24})],alignment:AlignmentType.JUSTIFIED,spacing:{after:220,line:360}}))}paragraphs.push(new Paragraph({text:'',spacing:{after:300}}));paragraphs.push(new Paragraph({text:'For and on behalf of the Board of Directors',spacing:{after:80}}));paragraphs.push(new Paragraph({text:fields.companyName||company.name,bold:true,spacing:{after:500}}));paragraphs.push(new Paragraph({text:signatory.name,bold:true,spacing:{after:40}}));paragraphs.push(new Paragraph({text:signatory.designation||'Authorised Signatory',spacing:{after:40}}));if(signatory.din)paragraphs.push(new Paragraph({text:`DIN: ${signatory.din}`,spacing:{after:40}}));paragraphs.push(new Paragraph({text:`Date: ${fields.meetingDate||'________________'}     Place: ${fields.place||'________________'}`,spacing:{before:200}}));const doc=new Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:900,right:1100,bottom:900,left:1100}}},children:paragraphs}]});blob=await Packer.toBlob(doc);const safe=(company.name||'Company').replace(/[^a-z0-9-_]+/gi,'_');const t=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_');filename=`${safe}_${t}.docx`;}
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout. This does not preserve the uploaded letterhead's exact fonts and header/footer. To preserve them, upload the complete letterhead + resolution layout as the master .docx under Resolution Templates.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
  function exportBackup(){const blob=new Blob([JSON.stringify({companies,templates,signatories,history},null,2)],{type:'application/json'});downloadBlob(blob,'cs-resolution-generator-backup.json')}
