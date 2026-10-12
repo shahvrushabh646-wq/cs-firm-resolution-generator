@@ -18,3 +18,10 @@
 .docx-rendered img{max-width:100%;height:auto;object-fit:contain}
 .docx-rendered ul,.docx-rendered ol{padding-left:20px}
 .preview-disclaimer{font:9px/1.45 Inter,Arial,sans-serif;color:#75869b;margin:8px 4px 0}
+
+/* Render the actual DOCX package in the preview, including its page header, footer, logo and tables. */
+.docx-rendered{max-height:520px;overflow:auto;padding:8px 4px;background:#f3f6fa;border-radius:4px}
+.docx-rendered .docx-wrapper{background:transparent!important;padding:0!important;display:block!important}
+.docx-rendered section.docx{margin:0 auto 12px!important;box-shadow:0 1px 5px #122c4d18!important;max-width:100%;}
+.docx-rendered img{max-width:100%;height:auto}
+.docx-rendered .preview-error{font:12px/1.5 Inter,Arial,sans-serif;color:#a33;padding:10px}
