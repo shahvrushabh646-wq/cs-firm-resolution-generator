@@ -26,9 +26,9 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
  const letterDoc=letterZip.file('word/document.xml');
  if(!letterDoc) throw new Error('The uploaded letterhead is missing its main document part.');
  let letterXml=await letterDoc.async('string');
- if(!/<w:body[^>]*>[\\s\\S]*?<\\/w:body>/.test(letterXml)) throw new Error('Could not read the letterhead Word document body.');
+ if(!/<w:body[^>]*>[\s\S]*?<\/w:body>/.test(letterXml)) throw new Error('Could not read the letterhead Word document body.');
  const escapeXml=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
- const resolveText=value=>String(value??'').replace(/\\[([A-Z_]+)\\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
+ const resolveText=value=>String(value??'').replace(/\[([A-Z_]+)\]/g,(_,key)=>replacements[key]!==undefined&&replacements[key]!==null&&String(replacements[key])!==''?String(replacements[key]):'['+key+']');
  const paragraph=(text,opts={})=>{
   const content=escapeXml(resolveText(text));
   const align=opts.align?' <w:jc w:val="'+opts.align+'"/>':'';
@@ -42,7 +42,7 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
  if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:24}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
- for(const block of body.split(/\\n\\s*\\n/)){
+ for(const block of body.split(/\\n\s*\\n/)){
   for(const line of block.split(/\\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
  }
  // Word requires sectPr, when present, to remain the final child of w:body.
