@@ -42,8 +42,8 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
  if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:24}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
- for(const block of body.split(/\\n\s*\\n/)){
-  for(const line of block.split(/\\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
+ for(const block of body.split(/\n\s*\n/)){
+  for(const line of block.split(/\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
  }
  // Word requires sectPr, when present, to remain the final child of w:body.
  const bodyClose=letterXml.lastIndexOf('</w:body>');
