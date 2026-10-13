@@ -30,17 +30,26 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
   const content=escapeXml(resolveText(text));
   const align=opts.align?' <w:jc w:val="'+opts.align+'"/>':'';
   const bold=opts.bold?'<w:b/>':'';
-  const size=opts.size||24;
-  return '<w:p><w:pPr>'+align+'</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'+bold+'<w:sz w:val="'+size+'"/></w:rPr><w:t xml:space="preserve">'+content+'</w:t></w:r></w:p>';
+  const size=opts.size||22;
+  // Compact paragraph spacing so the resolution and signature fit beneath the letterhead.
+  const spacing='<w:spacing w:before="0" w:after="'+(opts.after??80)+'" w:line="260" w:lineRule="auto"/>';
+  return '<w:p><w:pPr>'+align+spacing+'</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'+bold+'<w:sz w:val="'+size+'"/></w:rPr><w:t xml:space="preserve">'+content+'</w:t></w:r></w:p>';
  };
  const resolutionParts=[];
- if(template?.title) resolutionParts.push(paragraph(template.title,{align:'center',bold:true,size:28}));
- if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:24}));
+ if(template?.title) resolutionParts.push(paragraph(template.title,{align:'center',bold:true,size:26,after:70}));
+ if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:22,after:100}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
  for(const block of body.split(/\n\s*\n/)){
-  for(const line of block.split(/\n/)) resolutionParts.push(paragraph(line,{align:'both'}));
+  for(const line of block.split(/\n/)) resolutionParts.push(paragraph(line,{align:'both',after:90}));
  }
+ // Keep the authorisation/signature block directly after the resolution.
+ resolutionParts.push(paragraph('For and on behalf of the Board of Directors',{after:35}));
+ resolutionParts.push(paragraph(replacements.COMPANY_NAME||'',{bold:true,after:160}));
+ resolutionParts.push(paragraph(replacements.SIGNATORY_NAME||'[Signatory name]',{bold:true,after:20}));
+ resolutionParts.push(paragraph(replacements.DESIGNATION||'[Designation]',{after:20}));
+ if(replacements.DIN) resolutionParts.push(paragraph('DIN: '+replacements.DIN,{after:20}));
+ resolutionParts.push(paragraph('Date: '+(replacements.DATE||'________')+' · Place: '+(replacements.PLACE||'Mumbai'),{after:0}));
  const blob=await generateMergedResolutionDocx(letterheadBase64,resolutionParts.join(''),{});
  return {blob,changed:0};
 }
