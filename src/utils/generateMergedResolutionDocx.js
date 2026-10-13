@@ -40,8 +40,8 @@ export async function generateMergedResolutionDocx(
     processedResolution = processedResolution.replace(tokenPattern, () => safeValue);
   }
 
-  const bodyClose = documentXml.lastIndexOf('</w:body>');
   const bodyOpen = documentXml.indexOf('>', documentXml.indexOf('<w:body')) + 1;
+  const bodyClose = documentXml.lastIndexOf('</w:body>');
   if (bodyClose < bodyOpen) {
     throw new Error('Invalid DOCX letterhead package: document body boundaries are invalid.');
   }
@@ -49,7 +49,25 @@ export async function generateMergedResolutionDocx(
   // Keep section properties as the final child of w:body, as required by Word.
   const sectionStart = documentXml.lastIndexOf('<w:sectPr', bodyClose);
   const insertAt = sectionStart >= bodyOpen ? sectionStart : bodyClose;
-  documentXml = documentXml.slice(0, insertAt)
+  let existingBodyContent = documentXml.slice(bodyOpen, insertAt);
+
+  // Trim only trailing empty Word paragraphs, which otherwise consume page space.
+  const isEmptyParagraph = (xml) => {
+    const withoutProperties = xml
+      .replace(/<w:pPr\\b[^>]*>[\\s\\S]*?<\\/w:pPr>/g, '')
+      .replace(/<w:rPr\\b[^>]*>[\\s\\S]*?<\\/w:rPr>/g, '')
+      .replace(/<w:pPr\\b[^>]*\\/>/g, '')
+      .replace(/<w:rPr\\b[^>]*\\/>/g, '');
+    return !/<w:(?:t|tab|br|cr|drawing|pict|object|fldChar|instrText|footnoteReference|endnoteReference|commentReference|hyperlink|bookmarkStart|proofErr)\\b/.test(withoutProperties);
+  };
+  const emptyTail = /<w:p\\b[^>]*>[\\s\\S]*?<\\/w:p>\\s*$/;
+  let tail;
+  while ((tail = existingBodyContent.match(emptyTail)) && isEmptyParagraph(tail[0])) {
+    existingBodyContent = existingBodyContent.slice(0, tail.index);
+  }
+
+  documentXml = documentXml.slice(0, bodyOpen)
+    + existingBodyContent
     + processedResolution
     + documentXml.slice(insertAt);
 
