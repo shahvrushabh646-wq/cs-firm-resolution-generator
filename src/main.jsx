@@ -26,16 +26,16 @@ async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadA
  // authorised-signatory block have the best chance of fitting on one A4 page.
  // Preserve images, tables, logos, headers and footers; only tighten document layout.
  if(name==='word/document.xml'){
-  xml=xml.replace(/<w:br\\s+w:type="page"\\s*\\/>/g,'');
-  xml=xml.replace(/<w:pageBreakBefore(?:\\s+[^>]*)?\\/>/g,'');
-  xml=xml.replace(/<w:spacing\\b([^>]*)\\/>/g,(tag,attrs)=>{
-   let a=attrs.replace(/\\s+w:before="[^"]*"/g,'').replace(/\\s+w:after="[^"]*"/g,'').replace(/\\s+w:line="[^"]*"/g,'').replace(/\\s+w:lineRule="[^"]*"/g,'');
+  xml=xml.replace(/<w:br\s+w:type="page"\s*\/>/g,'');
+  xml=xml.replace(/<w:pageBreakBefore(?:\s+[^>]*)?\/>/g,'');
+  xml=xml.replace(/<w:spacing\b([^>]*)\/>/g,(tag,attrs)=>{
+   let a=attrs.replace(/\s+w:before="[^"]*"/g,'').replace(/\s+w:after="[^"]*"/g,'').replace(/\s+w:line="[^"]*"/g,'').replace(/\s+w:lineRule="[^"]*"/g,'');
    return '<w:spacing'+a+' w:before="0" w:after="40" w:line="220" w:lineRule="auto"/>';
   });
-  xml=xml.replace(/<w:sz\\s+w:val="(\\d+)"\\s*\\/>/g,(tag,size)=>'<w:sz w:val="'+Math.min(Number(size),20)+'"/>');
-  xml=xml.replace(/<w:szCs\\s+w:val="(\\d+)"\\s*\\/>/g,(tag,size)=>'<w:szCs w:val="'+Math.min(Number(size),20)+'"/>');
-  xml=xml.replace(/<w:pgMar\\b([^>]*)\\/>/g,(tag,attrs)=>{
-   let a=attrs.replace(/\\s+w:top="[^"]*"/g,'').replace(/\\s+w:bottom="[^"]*"/g,'').replace(/\\s+w:left="[^"]*"/g,'').replace(/\\s+w:right="[^"]*"/g,'');
+  xml=xml.replace(/<w:sz\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:sz w:val="'+Math.min(Number(size),20)+'"/>');
+  xml=xml.replace(/<w:szCs\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:szCs w:val="'+Math.min(Number(size),20)+'"/>');
+  xml=xml.replace(/<w:pgMar\b([^>]*)\/>/g,(tag,attrs)=>{
+   let a=attrs.replace(/\s+w:top="[^"]*"/g,'').replace(/\s+w:bottom="[^"]*"/g,'').replace(/\s+w:left="[^"]*"/g,'').replace(/\s+w:right="[^"]*"/g,'');
    return '<w:pgMar'+a+' w:top="540" w:right="720" w:bottom="540" w:left="720"/>';
   });
  }
