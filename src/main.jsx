@@ -34,9 +34,15 @@ async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadA
   });
   xml=xml.replace(/<w:sz\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:sz w:val="'+Math.min(Number(size),20)+'"/>');
   xml=xml.replace(/<w:szCs\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:szCs w:val="'+Math.min(Number(size),20)+'"/>');
+  // Force a compact A4 portrait page, including conservative header/footer distances.
+  // Keep unrelated section settings and all letterhead artwork intact.
+  xml=xml.replace(/<w:pgSz\b([^>]*)\/>/g,(tag,attrs)=>{
+   const a=attrs.replace(/\s+w:w="[^"]*"/g,'').replace(/\s+w:h="[^"]*"/g,'').replace(/\s+w:orient="[^"]*"/g,'');
+   return '<w:pgSz'+a+' w:w="11906" w:h="16838"/>';
+  });
   xml=xml.replace(/<w:pgMar\b([^>]*)\/>/g,(tag,attrs)=>{
-   let a=attrs.replace(/\s+w:top="[^"]*"/g,'').replace(/\s+w:bottom="[^"]*"/g,'').replace(/\s+w:left="[^"]*"/g,'').replace(/\s+w:right="[^"]*"/g,'');
-   return '<w:pgMar'+a+' w:top="540" w:right="720" w:bottom="540" w:left="720"/>';
+   let a=attrs.replace(/\s+w:top="[^"]*"/g,'').replace(/\s+w:bottom="[^"]*"/g,'').replace(/\s+w:left="[^"]*"/g,'').replace(/\s+w:right="[^"]*"/g,'').replace(/\s+w:header="[^"]*"/g,'').replace(/\s+w:footer="[^"]*"/g,'');
+   return '<w:pgMar'+a+' w:top="420" w:right="720" w:bottom="420" w:left="720" w:header="240" w:footer="240"/>';
   });
  }
 }zip.file(name,xml)}return {blob:await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),changed}}
