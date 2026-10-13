@@ -52,6 +52,7 @@ export async function generateMergedResolutionDocx(
   let existingBodyContent = documentXml.slice(bodyOpen, insertAt);
 
   // Trim only trailing empty Word paragraphs, which otherwise consume page space.
+  // Keep regex escapes as single JavaScript escapes (not double-escaped source text).
   const isEmptyParagraph = (xml) => {
     // Keep any paragraph that contains text, breaks, images, tabs, fields or links.
     return !/<w:(?:t|tab|br|cr|drawing|pict|object|fldChar|instrText|footnoteReference|endnoteReference|commentReference|hyperlink|bookmarkStart|proofErr)\b/.test(
