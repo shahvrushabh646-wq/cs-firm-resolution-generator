@@ -40,7 +40,6 @@ export async function generateMergedResolutionDocx(
     processedResolution = processedResolution.replace(tokenPattern, () => safeValue);
   }
 
-  const pageBreakXml = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
   const bodyClose = documentXml.lastIndexOf('</w:body>');
   const bodyOpen = documentXml.indexOf('>', documentXml.indexOf('<w:body')) + 1;
   if (bodyClose < bodyOpen) {
@@ -51,7 +50,6 @@ export async function generateMergedResolutionDocx(
   const sectionStart = documentXml.lastIndexOf('<w:sectPr', bodyClose);
   const insertAt = sectionStart >= bodyOpen ? sectionStart : bodyClose;
   documentXml = documentXml.slice(0, insertAt)
-    + pageBreakXml
     + processedResolution
     + documentXml.slice(insertAt);
 
