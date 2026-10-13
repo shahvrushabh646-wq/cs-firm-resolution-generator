@@ -75,8 +75,46 @@ function App(){
  async function generate(){if(!company){setMessage('Add/select a company letterhead first.');return}if(!template){setMessage('Add/select a resolution template first.');return}if(!signatory){setMessage('Add/select an authorised signatory first.');return}if((template.name||'').toLowerCase().includes('auditor')&&(!fields.auditorName.trim()||!fields.frn.trim())){setMessage('Enter both Auditor name and Firm Registration Number (FRN) before generating this auditor resolution.');return}if(company.letterheadData&&!template.sourceDocxData){setMessage('Upload the approved resolution as a Word template first. Your letterhead file will remain unchanged, and the resolution wording will be appended after it.');setPage('Resolution Templates');return}setBusy(true);try{
  const replacements={COMPANY_NAME:fields.companyName||company.name,CIN:fields.cin||company.cin,REGISTERED_OFFICE:fields.registeredOffice||company.registeredOffice,MEETING_DATE:fields.meetingDate,DATE:fields.meetingDate,PLACE:fields.place,AUDITOR_NAME:fields.auditorName,FRN:fields.frn,BANK_NAME:fields.bankName,BRANCH:fields.branch,DIRECTOR_NAME:fields.directorName||signatory.name,SIGNATORY_NAME:signatory.name,DESIGNATION:signatory.designation||'Authorised Signatory',DIN:signatory.din,EFFECTIVE_DATE:fields.effectiveDate};
  let blob,filename;
- if(company.letterheadData){const result=await makeLetterheadMaster(company.letterheadData,template.sourceDocxData||null,replacements,template);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';setMessage('Generated using your uploaded letterhead as the base. Existing letterhead text is not replaced; resolution paragraphs are appended after a page break. Please inspect the combined file in Microsoft Word because resolution styles may differ from the letterhead.');}else if(template.sourceDocxData){const result=await makeTemplateDocx(template.sourceDocxData,replacements);blob=result.blob;filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';if(result.changed===0)setMessage('Downloaded the original Word layout unchanged. No supported [PLACEHOLDER] tokens were found to replace. For automatic updates, add placeholders such as [COMPANY_NAME] directly in the master .docx; keep each placeholder together in one text run.');}
- else {let paragraphs=[];if(company.letterheadText?.trim()){for(const line of company.letterheadText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)){paragraphs.push(new Paragraph({text:line,alignment:AlignmentType.CENTER,spacing:{after:60}}))}}if(!paragraphs.length){paragraphs.push(new Paragraph({text:company.name.toUpperCase(),alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_2}));if(company.cin)paragraphs.push(new Paragraph({text:`CIN: ${company.cin}`,alignment:AlignmentType.CENTER}));if(company.registeredOffice)paragraphs.push(new Paragraph({text:`Registered Office: ${company.registeredOffice}`,alignment:AlignmentType.CENTER}))}paragraphs.push(new Paragraph({text:'',spacing:{after:200}}));paragraphs.push(new Paragraph({text:template.title||'BOARD RESOLUTION',alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_1,spacing:{after:80}}));if(template.subtitle)paragraphs.push(new Paragraph({text:template.subtitle,alignment:AlignmentType.CENTER,spacing:{after:240}}));for(const para of bodyText.split(/\n\s*\n/)){paragraphs.push(new Paragraph({children:[new TextRun({text:para,font:'Times New Roman',size:24})],alignment:AlignmentType.JUSTIFIED,spacing:{after:220,line:360}}))}paragraphs.push(new Paragraph({text:'',spacing:{after:300}}));paragraphs.push(new Paragraph({text:'For and on behalf of the Board of Directors',spacing:{after:80}}));paragraphs.push(new Paragraph({text:fields.companyName||company.name,bold:true,spacing:{after:500}}));paragraphs.push(new Paragraph({text:signatory.name,bold:true,spacing:{after:40}}));paragraphs.push(new Paragraph({text:signatory.designation||'Authorised Signatory',spacing:{after:40}}));if(signatory.din)paragraphs.push(new Paragraph({text:`DIN: ${signatory.din}`,spacing:{after:40}}));paragraphs.push(new Paragraph({text:`Date: ${fields.meetingDate||'________________'}     Place: ${fields.place||'________________'}`,spacing:{before:200}}));const doc=new Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:900,right:1100,bottom:900,left:1100}}},children:paragraphs}]});blob=await Packer.toBlob(doc);const safe=(company.name||'Company').replace(/[^a-z0-9-_]+/gi,'_');const t=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_');filename=`${safe}_${t}.docx`;}
+ if(template.sourceDocxData){
+  // Use the uploaded complete Board Resolution DOCX as the master so its letterhead,
+  // body, tables, signatures, headers, footers and page setup are retained.
+  const result=await makeTemplateDocx(template.sourceDocxData,replacements);
+  blob=result.blob;
+  filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';
+  setMessage(result.changed>0
+   ? 'Generated from the complete uploaded Board Resolution Word file. Original layout, letterhead, tables, signatures, headers and footers are preserved; supported placeholders were replaced.'
+   : 'Generated from the complete uploaded Board Resolution Word file, preserving its existing content and layout. No supported [PLACEHOLDER] tokens were found to replace, so review the document details in Word.');
+ }else{
+  const paragraphs=[];
+  if(company.letterheadText?.trim()){
+   for(const line of company.letterheadText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)){
+    paragraphs.push(new Paragraph({text:line,alignment:AlignmentType.CENTER,spacing:{after:60}}));
+   }
+  }
+  if(!paragraphs.length){
+   paragraphs.push(new Paragraph({text:company.name.toUpperCase(),alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_2}));
+   if(company.cin) paragraphs.push(new Paragraph({text:`CIN: ${company.cin}`,alignment:AlignmentType.CENTER}));
+   if(company.registeredOffice) paragraphs.push(new Paragraph({text:`Registered Office: ${company.registeredOffice}`,alignment:AlignmentType.CENTER}));
+  }
+  paragraphs.push(new Paragraph({text:'',spacing:{after:120}}));
+  paragraphs.push(new Paragraph({text:template.title||'BOARD RESOLUTION',alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_1,spacing:{after:60}}));
+  if(template.subtitle) paragraphs.push(new Paragraph({text:template.subtitle,alignment:AlignmentType.CENTER,spacing:{after:120}}));
+  for(const para of bodyText.split(/\n\s*\n/)){
+   paragraphs.push(new Paragraph({children:[new TextRun({text:para,font:'Times New Roman',size:22})],alignment:AlignmentType.JUSTIFIED,spacing:{after:100,line:280}}));
+  }
+  paragraphs.push(new Paragraph({text:'For and on behalf of the Board of Directors',spacing:{before:100,after:40}}));
+  paragraphs.push(new Paragraph({text:fields.companyName||company.name,bold:true,spacing:{after:120}}));
+  paragraphs.push(new Paragraph({text:signatory.name,bold:true,spacing:{after:20}}));
+  paragraphs.push(new Paragraph({text:signatory.designation||'Authorised Signatory',spacing:{after:20}}));
+  if(signatory.din) paragraphs.push(new Paragraph({text:`DIN: ${signatory.din}`,spacing:{after:20}}));
+  paragraphs.push(new Paragraph({text:`Date: ${fields.meetingDate||'________________'}     Place: ${fields.place||'________________'}`,spacing:{before:80}}));
+  const doc=new Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:700,right:900,bottom:700,left:900}}},children:paragraphs}]});
+  blob=await Packer.toBlob(doc);
+  const safe=(company.name||'Company').replace(/[^a-z0-9-_]+/gi,'_');
+  const t=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_');
+  filename=`${safe}_${t}.docx`;
+  setMessage(`Generated ${filename} using the built-in layout. For exact formatting, upload the complete BR .docx under Resolution Templates.`);
+ }
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout. This does not preserve the uploaded letterhead's exact fonts and header/footer. To preserve them, upload the complete letterhead + resolution layout as the master .docx under Resolution Templates.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
  function exportBackup(){const blob=new Blob([JSON.stringify({companies,templates,signatories,history},null,2)],{type:'application/json'});downloadBlob(blob,'cs-resolution-generator-backup.json')}
  function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.style.display='none';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
