@@ -54,12 +54,12 @@ export async function generateMergedResolutionDocx(
   // Trim only trailing empty Word paragraphs, which otherwise consume page space.
   const isEmptyParagraph = (xml) => {
     // Keep any paragraph that contains text, breaks, images, tabs, fields or links.
-    return !/<w:(?:t|tab|br|cr|drawing|pict|object|fldChar|instrText|footnoteReference|endnoteReference|commentReference|hyperlink|bookmarkStart|proofErr)\\b/.test(
-      xml.replace(/<w:pPr\\b[^>]*>[\\s\\S]*?<\\/w:pPr>/g, '')
-         .replace(/<w:rPr\\b[^>]*>[\\s\\S]*?<\\/w:rPr>/g, '')
+    return !/<w:(?:t|tab|br|cr|drawing|pict|object|fldChar|instrText|footnoteReference|endnoteReference|commentReference|hyperlink|bookmarkStart|proofErr)\b/.test(
+      xml.replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/g, '')
+         .replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, '')
     );
   };
-  const emptyTail = /<w:p\\b[^>]*>[\\s\\S]*?<\\/w:p>\\s*$/;
+  const emptyTail = /<w:p\b[^>]*>[\s\S]*?<\/w:p>\s*$/;
   let tail;
   while ((tail = existingBodyContent.match(emptyTail)) && isEmptyParagraph(tail[0])) {
     existingBodyContent = existingBodyContent.slice(0, tail.index);
