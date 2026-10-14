@@ -10,12 +10,6 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\]/g, '\$&');
-}');
-}
-
 function replacePlaceholders(text, placeholders = {}) {
   let result = String(text ?? '');
   const company = placeholders.COMPANY_NAME;
@@ -42,9 +36,10 @@ function replacePlaceholders(text, placeholders = {}) {
     result = result.replace(/\[DESIGNATION\]/gi, String(designation));
   }
 
+  // Literal token replacement avoids constructing fragile dynamic regular expressions.
   for (const [key, value] of Object.entries(placeholders || {})) {
     if (value === undefined || value === null || value === '') continue;
-    result = result.replace(new RegExp('\[' + escapeRegExp(key) + '\]', 'g'), String(value));
+    result = result.split('[' + key + ']').join(String(value));
   }
   return result;
 }
@@ -52,6 +47,7 @@ function replacePlaceholders(text, placeholders = {}) {
 function buildCompactResolutionXml(resolutionText, placeholders = {}) {
   const lines = replacePlaceholders(resolutionText, placeholders).split(/\r?\n/);
   let xml = '<w:p><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr></w:p>';
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -74,7 +70,6 @@ function replaceLetterheadText(xml, placeholders = {}) {
   const designation = placeholders.DESIGNATION;
   const din = placeholders.DIN;
 
-  // Replace known hard-coded values in the letterhead XML as well as in the resolution.
   if (company) {
     result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(company));
     result = result.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, escapeXml(company));
@@ -96,7 +91,7 @@ function replaceLetterheadText(xml, placeholders = {}) {
 
 /**
  * Merge resolution wording into the uploaded letterhead as ONE DOCX.
- * Supports both the app's legacy positional call and the object-style API.
+ * Supports both the legacy positional call and the object-style API.
  */
 export async function generateMergedResolutionDocx(
   letterheadOrOptions,
@@ -133,7 +128,7 @@ export async function generateMergedResolutionDocx(
   if (objectStyle) {
     resolutionXml = buildCompactResolutionXml(resolutionContent, replacements);
   } else {
-    // Legacy caller passes ready-made WordprocessingML; preserve its markup.
+    // The legacy caller supplies WordprocessingML; retain its formatting.
     resolutionXml = String(resolutionContent || '');
     for (const [key, value] of Object.entries(replacements)) {
       if (value !== undefined && value !== null && value !== '') {
@@ -163,7 +158,7 @@ export async function generateMergedResolutionDocx(
     throw new Error('Invalid Word document structure.');
   }
 
-  // Section properties must remain the final child of w:body.
+  // Keep section properties as the final child of w:body.
   const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
   const bodyContent = documentXml.slice(bodyOpenIndex, bodyCloseIndex);
   const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)/g)];
@@ -174,6 +169,7 @@ export async function generateMergedResolutionDocx(
 
   const updatedXml = documentXml.slice(0, insertAt) + resolutionXml + documentXml.slice(insertAt);
   letterheadZip.file('word/document.xml', updatedXml);
+
   return letterheadZip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
