@@ -12,22 +12,40 @@ function escapeXml(unsafe) {
 
 function replacePlaceholders(text, placeholders = {}) {
   let result = String(text ?? '');
-  if (placeholders.COMPANY_NAME) {
-    result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, String(placeholders.COMPANY_NAME));
-    result = result.replace(/\[COMPANY_NAME\]/gi, String(placeholders.COMPANY_NAME));
+  const company = placeholders.COMPANY_NAME;
+  const director = placeholders.DIRECTOR_NAME || placeholders.SIGNATORY_NAME;
+  const designation = placeholders.DESIGNATION;
+  const din = placeholders.DIN;
+
+  if (company) {
+    result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, String(company));
+    result = result.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, String(company));
+    result = result.replace(/\[COMPANY_NAME\]/gi, String(company));
   }
-  for (const [key, value] of Object.entries(placeholders)) {
-    const token = '[' + key + ']';
-    result = result.split(token).join(value === undefined || value === null || value === '' ? token : String(value));
+  if (director) {
+    result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, String(director));
+    result = result.replace(/Luigi\s*Bordonaro/gi, String(director));
+    result = result.replace(/\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\]/gi, String(director));
+  }
+  if (din) {
+    result = result.replace(/03095710/g, String(din));
+    result = result.replace(/\[DIN\]/gi, String(din));
+  }
+  if (designation) {
+    result = result.replace(/Managing\s*Director/gi, String(designation));
+    result = result.replace(/\[DESIGNATION\]/gi, String(designation));
+  }
+
+  for (const [key, value] of Object.entries(placeholders || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    result = result.split('[' + key + ']').join(String(value));
   }
   return result;
 }
 
 function buildCompactResolutionXml(resolutionText, placeholders = {}) {
-  const processedText = replacePlaceholders(resolutionText, placeholders);
-  const lines = processedText.split(/\r?\n/);
+  const lines = replacePlaceholders(resolutionText, placeholders).split(/\r?\n/);
   let xml = '<w:p><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr></w:p>';
-
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -44,8 +62,8 @@ function replaceXmlPlaceholder(xml, key, value) {
 }
 
 /**
- * Supports both the current app's legacy positional call with ready-made
- * WordprocessingML, and the object-style API with plain-text resolution content.
+ * Merge resolution wording into the uploaded letterhead as ONE DOCX.
+ * Supports the current app's legacy positional call and the object-style API.
  */
 export async function generateMergedResolutionDocx(
   letterheadOrOptions,
@@ -64,13 +82,14 @@ export async function generateMergedResolutionDocx(
   const letterheadBuffer = base64ToArrayBuffer(letterheadBase64);
   const letterheadZip = await JSZip.loadAsync(letterheadBuffer);
   const docFile = letterheadZip.file('word/document.xml');
-  if (!docFile) {
-    throw new Error('Invalid DOCX letterhead: word/document.xml not found.');
-  }
+  if (!docFile) throw new Error('Invalid DOCX letterhead: word/document.xml not found.');
 
   let documentXml = await docFile.async('string');
-  if (replacements.COMPANY_NAME) {
-    documentXml = documentXml.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(replacements.COMPANY_NAME));
+  // Replace known hard-coded company names and placeholders in the original letterhead.
+  const company = replacements.COMPANY_NAME;
+  if (company) {
+    documentXml = documentXml.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(company));
+    documentXml = documentXml.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, escapeXml(company));
   }
   for (const [key, value] of Object.entries(replacements)) {
     if (value !== undefined && value !== null && value !== '') {
@@ -78,12 +97,11 @@ export async function generateMergedResolutionDocx(
     }
   }
 
-  // Object-style calls accept plain text and build compact paragraphs. The app's
-  // existing positional call passes ready-made WordprocessingML; preserve it.
   let resolutionXml;
   if (objectStyle) {
     resolutionXml = buildCompactResolutionXml(resolutionContent, replacements);
   } else {
+    // Legacy caller passes ready-made WordprocessingML; preserve its markup.
     resolutionXml = String(resolutionContent || '');
     for (const [key, value] of Object.entries(replacements)) {
       if (value !== undefined && value !== null && value !== '') {
@@ -109,18 +127,19 @@ export async function generateMergedResolutionDocx(
     throw new Error('Invalid Word document structure.');
   }
 
+  // Insert before section properties, which must remain the final body child.
   const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
-  const sectionMatch = documentXml.slice(bodyOpenIndex, bodyCloseIndex).match(/<w:sectPr\b[^>]*(?:\/>|>)/g);
+  const bodyContent = documentXml.slice(bodyOpenIndex, bodyCloseIndex);
+  const sectionMatch = bodyContent.match(/<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)/g);
   let insertAt = bodyCloseIndex;
   if (sectionMatch?.length) {
-    const lastSectionTag = sectionMatch[sectionMatch.length - 1];
-    const sectionIndex = documentXml.lastIndexOf(lastSectionTag, bodyCloseIndex);
+    const lastSection = sectionMatch[sectionMatch.length - 1];
+    const sectionIndex = documentXml.lastIndexOf(lastSection, bodyCloseIndex);
     if (sectionIndex >= bodyOpenIndex) insertAt = sectionIndex;
   }
 
   const updatedXml = documentXml.slice(0, insertAt) + resolutionXml + documentXml.slice(insertAt);
   letterheadZip.file('word/document.xml', updatedXml);
-
   return letterheadZip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
