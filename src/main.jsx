@@ -5,6 +5,7 @@ import mammoth from 'mammoth/mammoth.browser';
 import {renderAsync as renderDocxPreview} from 'docx-preview';
 import JSZip from 'jszip';
 import { generateMergedResolutionDocx } from './utils/generateMergedResolutionDocx.js';
+import { downloadBlob as downloadGeneratedBlob } from './utils/fileHelpers.js';
 import {FileText, Users, History, Plus, Trash2, Pencil, Download, Eye, Upload, CheckCircle2, FileSpreadsheet, ShieldCheck, X, RefreshCw} from 'lucide-react';
 import LetterheadPreview from './LetterheadPreview.jsx';
 import './style.css';
@@ -143,7 +144,7 @@ function App(){
   filename=`${safe}_${t}.docx`;
   setMessage(`Generated ${filename} using the built-in layout. For exact formatting, upload the complete BR .docx under Resolution Templates.`);
  }
- const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout. This does not preserve the uploaded letterhead's exact fonts and header/footer. To preserve them, upload the complete letterhead + resolution layout as the master .docx under Resolution Templates.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
+ downloadGeneratedBlob(blob,filename);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout. This does not preserve the uploaded letterhead's exact fonts and header/footer. To preserve them, upload the complete letterhead + resolution layout as the master .docx under Resolution Templates.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
  function exportBackup(){const blob=new Blob([JSON.stringify({companies,templates,signatories,history},null,2)],{type:'application/json'});downloadBlob(blob,'cs-resolution-generator-backup.json')}
  function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.style.display='none';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
  function importBackup(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||!Array.isArray(d.companies)||!Array.isArray(d.templates)||!Array.isArray(d.signatories))throw new Error('Invalid backup structure');setCompanies(d.companies);setTemplates(d.templates);setSignatories(d.signatories);setHistory(Array.isArray(d.history)?d.history:[]);setMessage('Backup imported successfully.')}catch{setMessage('Invalid backup file or missing required data. Your current saved data was not changed.')}};r.readAsText(f);e.target.value=''}
