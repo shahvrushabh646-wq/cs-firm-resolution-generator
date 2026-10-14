@@ -1,13 +1,17 @@
 import JSZip from 'jszip';
 import { base64ToArrayBuffer } from './fileHelpers.js';
 
-function escapeXml(unsafe) {
-  return String(unsafe ?? '')
+function escapeXml(value) {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function replacePlaceholders(text, placeholders = {}) {
@@ -20,31 +24,31 @@ function replacePlaceholders(text, placeholders = {}) {
   if (company) {
     result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, String(company));
     result = result.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, String(company));
-    result = result.replace(/\[COMPANY_NAME\]/gi, String(company));
+    result = result.replace(/\\[COMPANY_NAME\\]/gi, String(company));
   }
   if (director) {
-    result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, String(director));
-    result = result.replace(/Luigi\s*Bordonaro/gi, String(director));
-    result = result.replace(/\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\]/gi, String(director));
+    result = result.replace(/Mr\\.?\\s*Luigi\\s*Bordonaro/gi, String(director));
+    result = result.replace(/Luigi\\s*Bordonaro/gi, String(director));
+    result = result.replace(/\\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\\]/gi, String(director));
   }
   if (din) {
     result = result.replace(/03095710/g, String(din));
-    result = result.replace(/\[DIN\]/gi, String(din));
+    result = result.replace(/\\[DIN\\]/gi, String(din));
   }
   if (designation) {
-    result = result.replace(/Managing\s*Director/gi, String(designation));
-    result = result.replace(/\[DESIGNATION\]/gi, String(designation));
+    result = result.replace(/Managing\\s*Director/gi, String(designation));
+    result = result.replace(/\\[DESIGNATION\\]/gi, String(designation));
   }
 
   for (const [key, value] of Object.entries(placeholders || {})) {
     if (value === undefined || value === null || value === '') continue;
-    result = result.split('[' + key + ']').join(String(value));
+    result = result.replace(new RegExp('\\\\[' + escapeRegExp(key) + '\\\\]', 'g'), String(value));
   }
   return result;
 }
 
 function buildCompactResolutionXml(resolutionText, placeholders = {}) {
-  const lines = replacePlaceholders(resolutionText, placeholders).split(/\r?\n/);
+  const lines = replacePlaceholders(resolutionText, placeholders).split(/\\r?\\n/);
   let xml = '<w:p><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr></w:p>';
   for (const line of lines) {
     const trimmed = line.trim();
@@ -61,19 +65,55 @@ function replaceXmlPlaceholder(xml, key, value) {
   return xml.split('[' + key + ']').join(escapeXml(value));
 }
 
+function replaceLetterheadText(xml, placeholders = {}) {
+  let result = xml;
+  const company = placeholders.COMPANY_NAME;
+  const director = placeholders.DIRECTOR_NAME || placeholders.SIGNATORY_NAME;
+  const designation = placeholders.DESIGNATION;
+  const din = placeholders.DIN;
+
+  // Replace known hard-coded values in the letterhead XML as well as in the resolution.
+  if (company) {
+    result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(company));
+    result = result.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, escapeXml(company));
+  }
+  if (director) {
+    result = result.replace(/Mr\\.?\\s*Luigi\\s*Bordonaro/gi, escapeXml(director));
+    result = result.replace(/Luigi\\s*Bordonaro/gi, escapeXml(director));
+  }
+  if (din) result = result.replace(/03095710/g, escapeXml(din));
+  if (designation) result = result.replace(/Managing\\s*Director/gi, escapeXml(designation));
+
+  for (const [key, value] of Object.entries(placeholders || {})) {
+    if (value !== undefined && value !== null && value !== '') {
+      result = replaceXmlPlaceholder(result, key, value);
+    }
+  }
+  return result;
+}
+
 /**
  * Merge resolution wording into the uploaded letterhead as ONE DOCX.
- * Supports the current app's legacy positional call and the object-style API.
+ * Supports both the app's legacy positional call and the object-style API.
  */
 export async function generateMergedResolutionDocx(
   letterheadOrOptions,
   resolutionBodyXmlSnippet,
   placeholderReplacements = {},
 ) {
-  const objectStyle = letterheadOrOptions && typeof letterheadOrOptions === 'object' && !ArrayBuffer.isView(letterheadOrOptions);
+  const objectStyle =
+    letterheadOrOptions !== null &&
+    typeof letterheadOrOptions === 'object' &&
+    !ArrayBuffer.isView(letterheadOrOptions) &&
+    !(letterheadOrOptions instanceof ArrayBuffer);
+
   const letterheadBase64 = objectStyle ? letterheadOrOptions.letterheadBase64 : letterheadOrOptions;
-  const replacements = objectStyle ? (letterheadOrOptions.placeholders || {}) : (placeholderReplacements || {});
-  const resolutionContent = objectStyle ? letterheadOrOptions.resolutionContent : resolutionBodyXmlSnippet;
+  const replacements = objectStyle
+    ? (letterheadOrOptions.placeholders || {})
+    : (placeholderReplacements || {});
+  const resolutionContent = objectStyle
+    ? letterheadOrOptions.resolutionContent
+    : resolutionBodyXmlSnippet;
 
   if (!letterheadBase64) {
     throw new Error('Letterhead file data is missing. Please select a company with an uploaded Word letterhead.');
@@ -85,17 +125,7 @@ export async function generateMergedResolutionDocx(
   if (!docFile) throw new Error('Invalid DOCX letterhead: word/document.xml not found.');
 
   let documentXml = await docFile.async('string');
-  // Replace known hard-coded company names and placeholders in the original letterhead.
-  const company = replacements.COMPANY_NAME;
-  if (company) {
-    documentXml = documentXml.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(company));
-    documentXml = documentXml.replace(/BIT4ID INDIA PRIVATE LIMITED/gi, escapeXml(company));
-  }
-  for (const [key, value] of Object.entries(replacements)) {
-    if (value !== undefined && value !== null && value !== '') {
-      documentXml = replaceXmlPlaceholder(documentXml, key, value);
-    }
-  }
+  documentXml = replaceLetterheadText(documentXml, replacements);
 
   let resolutionXml;
   if (objectStyle) {
@@ -109,33 +139,35 @@ export async function generateMergedResolutionDocx(
       }
     }
     resolutionXml = resolutionXml
-      .replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g, '')
-      .replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g, '')
-      .replace(/<w:spacing\b([^>]*)\/\s*>/g, (tag, attrs) => {
+      .replace(/<w:br\\b(?=[^>]*\\bw:type="page")[^>]*\\/\\s*>/g, '')
+      .replace(/<w:pageBreakBefore\\b[^>]*\\/\\s*>/g, '')
+      .replace(/<w:spacing\\b([^>]*)\\/\\s*>/g, (tag, attrs) => {
         const clean = attrs
-          .replace(/\s+w:before="[^"]*"/g, '')
-          .replace(/\s+w:after="[^"]*"/g, '')
-          .replace(/\s+w:line="[^"]*"/g, '')
-          .replace(/\s+w:lineRule="[^"]*"/g, '');
+          .replace(/\\s+w:before="[^"]*"/g, '')
+          .replace(/\\s+w:after="[^"]*"/g, '')
+          .replace(/\\s+w:line="[^"]*"/g, '')
+          .replace(/\\s+w:lineRule="[^"]*"/g, '');
         return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
       });
   }
 
-  const bodyOpenMatch = documentXml.match(/<w:body\b[^>]*>/);
+  const bodyOpenMatch = documentXml.match(/<w:body\\b[^>]*>/);
   const bodyCloseIndex = documentXml.lastIndexOf('</w:body>');
-  if (!bodyOpenMatch || bodyCloseIndex === -1 || bodyCloseIndex < bodyOpenMatch.index + bodyOpenMatch[0].length) {
+  if (
+    !bodyOpenMatch ||
+    bodyCloseIndex === -1 ||
+    bodyCloseIndex < bodyOpenMatch.index + bodyOpenMatch[0].length
+  ) {
     throw new Error('Invalid Word document structure.');
   }
 
-  // Insert before section properties, which must remain the final body child.
+  // Section properties must remain the final child of w:body.
   const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
   const bodyContent = documentXml.slice(bodyOpenIndex, bodyCloseIndex);
-  const sectionMatch = bodyContent.match(/<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)/g);
+  const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/w:sectPr>)/g)];
   let insertAt = bodyCloseIndex;
-  if (sectionMatch?.length) {
-    const lastSection = sectionMatch[sectionMatch.length - 1];
-    const sectionIndex = documentXml.lastIndexOf(lastSection, bodyCloseIndex);
-    if (sectionIndex >= bodyOpenIndex) insertAt = sectionIndex;
+  if (sectionMatches.length) {
+    insertAt = bodyOpenIndex + sectionMatches[sectionMatches.length - 1].index;
   }
 
   const updatedXml = documentXml.slice(0, insertAt) + resolutionXml + documentXml.slice(insertAt);
