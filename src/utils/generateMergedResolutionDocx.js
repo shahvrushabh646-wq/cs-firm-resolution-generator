@@ -27,11 +27,11 @@ function replacePlaceholders(text, placeholders = {}) {
     result = result.replace(/Luigi\s*Bordonaro/gi, String(director));
     result = result.replace(/\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\]/gi, String(director));
   }
-  if (din) {
+  if (din !== undefined && din !== null && din !== '') {
     result = result.replace(/03095710/g, String(din));
     result = result.replace(/\[DIN\]/gi, String(din));
   }
-  if (designation) {
+  if (designation !== undefined && designation !== null && designation !== '') {
     result = result.replace(/Managing\s*Director/gi, String(designation));
     result = result.replace(/\[DESIGNATION\]/gi, String(designation));
   }
