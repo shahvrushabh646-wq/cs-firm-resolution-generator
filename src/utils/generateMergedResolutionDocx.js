@@ -68,6 +68,20 @@ export async function generateMergedResolutionDocx(
     processedResolution = replaceXmlPlaceholder(processedResolution, key, value);
   }
 
+  // Compact explicit page breaks and paragraph spacing in the generated resolution
+  // only. Do not rewrite the uploaded letterhead's fonts or its paragraph styling.
+  processedResolution = processedResolution
+    .replace(/<w:br\\b(?=[^>]*\\bw:type="page")[^>]*\\/\\s*>/g, '')
+    .replace(/<w:pageBreakBefore\\b[^>]*\\/\\s*>/g, '')
+    .replace(/<w:spacing\\b([^>]*)\\/\\s*>/g, (tag, attrs) => {
+      const clean = attrs
+        .replace(/\\s+w:before="[^"]*"/g, '')
+        .replace(/\\s+w:after="[^"]*"/g, '')
+        .replace(/\\s+w:line="[^"]*"/g, '')
+        .replace(/\\s+w:lineRule="[^"]*"/g, '');
+      return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
+    });
+
   const bodyOpen = bodyMatch.index + bodyMatch[0].length;
   const finalBodyClose = documentXml.lastIndexOf('</w:body>');
   if (finalBodyClose < bodyOpen) {
