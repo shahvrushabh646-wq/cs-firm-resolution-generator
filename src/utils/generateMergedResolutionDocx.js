@@ -42,7 +42,7 @@ function replacePlaceholders(text, placeholders = {}) {
 
   for (const [key, value] of Object.entries(placeholders || {})) {
     if (value === undefined || value === null || value === '') continue;
-    result = result.replace(new RegExp('\\\\[' + escapeRegExp(key) + '\\\\]', 'g'), String(value));
+    result = result.replace(new RegExp('\\[' + escapeRegExp(key) + '\\]', 'g'), String(value));
   }
   return result;
 }
