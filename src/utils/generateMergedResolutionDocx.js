@@ -1,128 +1,127 @@
 import JSZip from 'jszip';
 import { base64ToArrayBuffer } from './fileHelpers.js';
 
-const escapeXml = (value) => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&apos;');
+function escapeXml(unsafe) {
+  return String(unsafe ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
-const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function replacePlaceholders(text, placeholders = {}) {
+  let result = String(text ?? '');
+  if (placeholders.COMPANY_NAME) {
+    result = result.replace(/WAM INDIA PRIVATE LIMITED/gi, String(placeholders.COMPANY_NAME));
+    result = result.replace(/\[COMPANY_NAME\]/gi, String(placeholders.COMPANY_NAME));
+  }
+  for (const [key, value] of Object.entries(placeholders)) {
+    const token = '[' + key + ']';
+    result = result.split(token).join(value === undefined || value === null || value === '' ? token : String(value));
+  }
+  return result;
+}
 
-/**
- * Replace a literal placeholder in XML text without treating the key as regex.
- * This is intended for placeholders that are contiguous in the XML source.
- */
+function buildCompactResolutionXml(resolutionText, placeholders = {}) {
+  const processedText = replacePlaceholders(resolutionText, placeholders);
+  const lines = processedText.split(/\r?\n/);
+  let xml = '<w:p><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr></w:p>';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      xml += '<w:p><w:pPr><w:spacing w:after="0" w:line="220" w:lineRule="auto"/></w:pPr></w:p>';
+      continue;
+    }
+    xml += '<w:p><w:pPr><w:spacing w:before="0" w:after="80" w:line="240" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">' + escapeXml(trimmed) + '</w:t></w:r></w:p>';
+  }
+  return xml;
+}
+
 function replaceXmlPlaceholder(xml, key, value) {
-  const token = '[' + key + ']';
-  return xml.split(token).join(escapeXml(value));
+  return xml.split('[' + key + ']').join(escapeXml(value));
 }
 
 /**
- * Append resolution WordprocessingML to an uploaded letterhead DOCX.
- *
- * The uploaded DOCX remains the base package so existing styles, images,
- * relationships, tables, headers and footers are retained. The resolution is
- * inserted before the final section properties, as required by Word.
- *
- * resolutionBodyXmlSnippet must be valid WordprocessingML paragraphs. Build
- * those paragraphs with the desired font/size; this function deliberately
- * does not force a font or globally rewrite the letterhead's formatting.
+ * Supports both the current app's legacy positional call with ready-made
+ * WordprocessingML, and the object-style API with plain-text resolution content.
  */
 export async function generateMergedResolutionDocx(
-  letterheadBase64,
+  letterheadOrOptions,
   resolutionBodyXmlSnippet,
   placeholderReplacements = {},
 ) {
+  const objectStyle = letterheadOrOptions && typeof letterheadOrOptions === 'object' && !ArrayBuffer.isView(letterheadOrOptions);
+  const letterheadBase64 = objectStyle ? letterheadOrOptions.letterheadBase64 : letterheadOrOptions;
+  const replacements = objectStyle ? (letterheadOrOptions.placeholders || {}) : (placeholderReplacements || {});
+  const resolutionContent = objectStyle ? letterheadOrOptions.resolutionContent : resolutionBodyXmlSnippet;
+
   if (!letterheadBase64) {
-    throw new Error('Letterhead file data is missing. Please upload the .docx file again.');
+    throw new Error('Letterhead file data is missing. Please select a company with an uploaded Word letterhead.');
   }
 
   const letterheadBuffer = base64ToArrayBuffer(letterheadBase64);
-  const zip = await JSZip.loadAsync(letterheadBuffer);
-  const documentFile = zip.file('word/document.xml');
-
-  if (!documentFile) {
-    throw new Error('Invalid DOCX letterhead package: word/document.xml not found.');
+  const letterheadZip = await JSZip.loadAsync(letterheadBuffer);
+  const docFile = letterheadZip.file('word/document.xml');
+  if (!docFile) {
+    throw new Error('Invalid DOCX letterhead: word/document.xml not found.');
   }
 
-  let documentXml = await documentFile.async('string');
-  const bodyMatch = documentXml.match(/<w:body\b[^>]*>/);
-  const bodyClose = documentXml.lastIndexOf('</w:body>');
-
-  if (!bodyMatch || bodyClose < bodyMatch.index + bodyMatch[0].length) {
-    throw new Error('Invalid DOCX letterhead package: document body boundaries are invalid.');
+  let documentXml = await docFile.async('string');
+  if (replacements.COMPANY_NAME) {
+    documentXml = documentXml.replace(/WAM INDIA PRIVATE LIMITED/gi, escapeXml(replacements.COMPANY_NAME));
+  }
+  for (const [key, value] of Object.entries(replacements)) {
+    if (value !== undefined && value !== null && value !== '') {
+      documentXml = replaceXmlPlaceholder(documentXml, key, value);
+    }
   }
 
-  // Replace literal placeholders in the existing document and generated
-  // resolution XML. Values are escaped before being inserted into XML.
-  for (const [key, value] of Object.entries(placeholderReplacements || {})) {
-    if (value === undefined || value === null || String(value) === '') continue;
-    documentXml = replaceXmlPlaceholder(documentXml, key, value);
+  // Object-style calls accept plain text and build compact paragraphs. The app's
+  // existing positional call passes ready-made WordprocessingML; preserve it.
+  let resolutionXml;
+  if (objectStyle) {
+    resolutionXml = buildCompactResolutionXml(resolutionContent, replacements);
+  } else {
+    resolutionXml = String(resolutionContent || '');
+    for (const [key, value] of Object.entries(replacements)) {
+      if (value !== undefined && value !== null && value !== '') {
+        resolutionXml = replaceXmlPlaceholder(resolutionXml, key, value);
+      }
+    }
+    resolutionXml = resolutionXml
+      .replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g, '')
+      .replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g, '')
+      .replace(/<w:spacing\b([^>]*)\/\s*>/g, (tag, attrs) => {
+        const clean = attrs
+          .replace(/\s+w:before="[^"]*"/g, '')
+          .replace(/\s+w:after="[^"]*"/g, '')
+          .replace(/\s+w:line="[^"]*"/g, '')
+          .replace(/\s+w:lineRule="[^"]*"/g, '');
+        return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
+      });
   }
 
-  let processedResolution = String(resolutionBodyXmlSnippet || '');
-  for (const [key, value] of Object.entries(placeholderReplacements || {})) {
-    if (value === undefined || value === null || String(value) === '') continue;
-    processedResolution = replaceXmlPlaceholder(processedResolution, key, value);
+  const bodyOpenMatch = documentXml.match(/<w:body\b[^>]*>/);
+  const bodyCloseIndex = documentXml.lastIndexOf('</w:body>');
+  if (!bodyOpenMatch || bodyCloseIndex === -1 || bodyCloseIndex < bodyOpenMatch.index + bodyOpenMatch[0].length) {
+    throw new Error('Invalid Word document structure.');
   }
 
-  // Compact explicit page breaks and paragraph spacing in the generated resolution
-  // only. Do not rewrite the uploaded letterhead's fonts or its paragraph styling.
-  processedResolution = processedResolution
-    .replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g, '')
-    .replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g, '')
-    .replace(/<w:spacing\b([^>]*)\/\s*>/g, (tag, attrs) => {
-      const clean = attrs
-        .replace(/\s+w:before="[^"]*"/g, '')
-        .replace(/\s+w:after="[^"]*"/g, '')
-        .replace(/\s+w:line="[^"]*"/g, '')
-        .replace(/\s+w:lineRule="[^"]*"/g, '');
-      return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
-    });
-
-  const bodyOpen = bodyMatch.index + bodyMatch[0].length;
-  const finalBodyClose = documentXml.lastIndexOf('</w:body>');
-  if (finalBodyClose < bodyOpen) {
-    throw new Error('Invalid DOCX letterhead package: document body boundaries are invalid.');
+  const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
+  const sectionMatch = documentXml.slice(bodyOpenIndex, bodyCloseIndex).match(/<w:sectPr\b[^>]*(?:\/>|>)/g);
+  let insertAt = bodyCloseIndex;
+  if (sectionMatch?.length) {
+    const lastSectionTag = sectionMatch[sectionMatch.length - 1];
+    const sectionIndex = documentXml.lastIndexOf(lastSectionTag, bodyCloseIndex);
+    if (sectionIndex >= bodyOpenIndex) insertAt = sectionIndex;
   }
 
-  // w:sectPr must remain the final child of w:body. Support both self-closing
-  // and paired sectPr elements, while leaving their contents untouched.
-  const sectionCandidates = [...documentXml.slice(bodyOpen, finalBodyClose).matchAll(/<w:sectPr\b[^>]*(?:\/>|>)/g)];
-  let insertAt = finalBodyClose;
-  if (sectionCandidates.length) {
-    const last = sectionCandidates[sectionCandidates.length - 1];
-    insertAt = bodyOpen + last.index;
-  }
+  const updatedXml = documentXml.slice(0, insertAt) + resolutionXml + documentXml.slice(insertAt);
+  letterheadZip.file('word/document.xml', updatedXml);
 
-  let existingBodyContent = documentXml.slice(bodyOpen, insertAt);
-
-  // Remove only trailing empty paragraphs from the existing letterhead.
-  // Never remove paragraphs containing text, drawings, fields, breaks,
-  // hyperlinks, bookmarks or other visible/semantic content.
-  const emptyTail = /<w:p\b[^>]*>[\s\S]*?<\/w:p>\s*$/;
-  const isEmptyParagraph = (paragraphXml) => {
-    const withoutProperties = paragraphXml
-      .replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/g, '')
-      .replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, '');
-    return !/<w:(?:t|tab|br|cr|drawing|pict|object|fldChar|instrText|footnoteReference|endnoteReference|commentReference|hyperlink|bookmarkStart|proofErr)\b/.test(withoutProperties);
-  };
-
-  let tailMatch;
-  while ((tailMatch = existingBodyContent.match(emptyTail)) && isEmptyParagraph(tailMatch[0])) {
-    existingBodyContent = existingBodyContent.slice(0, tailMatch.index);
-  }
-
-  documentXml = documentXml.slice(0, bodyOpen)
-    + existingBodyContent
-    + processedResolution
-    + documentXml.slice(insertAt);
-
-  zip.file('word/document.xml', documentXml);
-
-  return zip.generateAsync({
+  return letterheadZip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     compression: 'DEFLATE',
