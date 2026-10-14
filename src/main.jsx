@@ -104,15 +104,20 @@ function App(){
  async function generate(){if(!company){setMessage('Add/select a company letterhead first.');return}if(!template){setMessage('Add/select a resolution template first.');return}if(!signatory){setMessage('Add/select an authorised signatory first.');return}if((template.name||'').toLowerCase().includes('auditor')&&(!fields.auditorName.trim()||!fields.frn.trim())){setMessage('Enter both Auditor name and Firm Registration Number (FRN) before generating this auditor resolution.');return}if(company.letterheadData&&!template.sourceDocxData){setMessage('Upload the approved resolution as a Word template first. Your letterhead file will remain unchanged, and the resolution wording will be appended after it.');setPage('Resolution Templates');return}setBusy(true);try{
  const replacements={COMPANY_NAME:fields.companyName||company.name,CIN:fields.cin||company.cin,REGISTERED_OFFICE:fields.registeredOffice||company.registeredOffice,MEETING_DATE:fields.meetingDate,DATE:fields.meetingDate,PLACE:fields.place,AUDITOR_NAME:fields.auditorName,FRN:fields.frn,BANK_NAME:fields.bankName,BRANCH:fields.branch,DIRECTOR_NAME:fields.directorName||signatory.name,SIGNATORY_NAME:signatory.name,DESIGNATION:signatory.designation||'Authorised Signatory',DIN:signatory.din,EFFECTIVE_DATE:fields.effectiveDate};
  let blob,filename;
- if(template.sourceDocxData){
-  // Use the uploaded complete Board Resolution DOCX as the master so its letterhead,
-  // body, tables, signatures, headers, footers and page setup are retained.
+ if(company.letterheadData){
+  // Always use the company's saved letterhead as the DOCX master and append the
+  // selected resolution into that same file. This intentionally produces ONE Word file.
+  const result=await makeLetterheadMaster(company.letterheadData,template.sourceDocxData||'letterhead-only',replacements,template);
+  blob=result.blob;
+  filename=`${(company.name||'Company').replace(/[^a-z0-9-_]+/gi,'_')}_${(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')}.docx`;
+  setMessage('Created one merged Word document: company letterhead followed by the selected resolution. Download should start automatically.');
+ }else if(template.sourceDocxData){
   const result=await makeTemplateDocx(template.sourceDocxData,replacements);
   blob=result.blob;
   filename=(template.name||'Resolution').replace(/[^a-z0-9-_]+/gi,'_')+'.docx';
   setMessage(result.changed>0
-   ? 'Generated from the complete uploaded Board Resolution Word file. Original layout, letterhead, tables, signatures, headers and footers are preserved; supported placeholders were replaced.'
-   : 'Generated from the complete uploaded Board Resolution Word file, preserving its existing content and layout. No supported [PLACEHOLDER] tokens were found to replace, so review the document details in Word.');
+   ? 'Generated one Word file from the uploaded resolution template; supported placeholders were replaced.'
+   : 'Generated one Word file from the uploaded resolution template. Review the details in Word.');
  }else{
   const paragraphs=[];
   if(company.letterheadText?.trim()){
@@ -144,7 +149,7 @@ function App(){
   filename=`${safe}_${t}.docx`;
   setMessage(`Generated ${filename} using the built-in layout. For exact formatting, upload the complete BR .docx under Resolution Templates.`);
  }
- downloadGeneratedBlob(blob,filename);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout. This does not preserve the uploaded letterhead's exact fonts and header/footer. To preserve them, upload the complete letterhead + resolution layout as the master .docx under Resolution Templates.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
+ downloadGeneratedBlob(blob,filename);setHistory(p=>[{id:crypto.randomUUID(),company:company.name,template:template.name,signatory:signatory.name,filename,date:new Date().toLocaleString()},...p]);if(!company.letterheadData&&!template.sourceDocxData)setMessage(`Generated ${filename} using the built-in layout.`)}catch(e){setMessage('Could not generate Word document: '+e.message)}finally{setBusy(false)}}
  function exportBackup(){const blob=new Blob([JSON.stringify({companies,templates,signatories,history},null,2)],{type:'application/json'});downloadBlob(blob,'cs-resolution-generator-backup.json')}
  function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.style.display='none';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
  function importBackup(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||!Array.isArray(d.companies)||!Array.isArray(d.templates)||!Array.isArray(d.signatories))throw new Error('Invalid backup structure');setCompanies(d.companies);setTemplates(d.templates);setSignatories(d.signatories);setHistory(Array.isArray(d.history)?d.history:[]);setMessage('Backup imported successfully.')}catch{setMessage('Invalid backup file or missing required data. Your current saved data was not changed.')}};r.readAsText(f);e.target.value=''}
