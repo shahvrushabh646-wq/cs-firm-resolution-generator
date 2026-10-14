@@ -27,17 +27,17 @@ async function makeTemplateDocx(base64,replacements){const zip=await JSZip.loadA
  // Preserve images, tables, logos, headers and footers; only tighten document layout.
  if(name==='word/document.xml'){
   // Remove explicit page-break controls that would force the resolution onto a new page.
-  xml=xml.replace(/<w:br\\b(?=[^>]*\\bw:type="page")[^>]*\\/\\s*>/g,'');
-  xml=xml.replace(/<w:pageBreakBefore\\b[^>]*\\/\\s*>/g,'');
+  xml=xml.replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g,'');
+  xml=xml.replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g,'');
   // Compact paragraph spacing to 3pt after, with a readable single-spaced line height.
-  xml=xml.replace(/<w:spacing\\b([^>]*)\\/\\s*>/g,(tag,attrs)=>{
-   let a=attrs.replace(/\\s+w:before="[^"]*"/g,'').replace(/\\s+w:after="[^"]*"/g,'').replace(/\\s+w:line="[^"]*"/g,'').replace(/\\s+w:lineRule="[^"]*"/g,'');
+  xml=xml.replace(/<w:spacing\b([^>]*)\/\s*>/g,(tag,attrs)=>{
+   let a=attrs.replace(/\s+w:before="[^"]*"/g,'').replace(/\s+w:after="[^"]*"/g,'').replace(/\s+w:line="[^"]*"/g,'').replace(/\s+w:lineRule="[^"]*"/g,'');
    return '<w:spacing'+a+' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
   });
   // Use Calibri 10pt consistently for the generated document while retaining bold/italic run properties.
-  xml=xml.replace(/<w:rFonts\\b([^>]*)\\/\\s*>/g,'<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/>');
-  xml=xml.replace(/<w:sz\\s+w:val="(\\d+)"\\s*\\/>/g,(tag,size)=>'<w:sz w:val="'+Math.min(Number(size),20)+'"/>');
-  xml=xml.replace(/<w:szCs\\s+w:val="(\\d+)"\\s*\\/>/g,(tag,size)=>'<w:szCs w:val="'+Math.min(Number(size),20)+'"/>');
+  xml=xml.replace(/<w:rFonts\b([^>]*)\/\s*>/g,'<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/>');
+  xml=xml.replace(/<w:sz\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:sz w:val="'+Math.min(Number(size),20)+'"/>');
+  xml=xml.replace(/<w:szCs\s+w:val="(\d+)"\s*\/>/g,(tag,size)=>'<w:szCs w:val="'+Math.min(Number(size),20)+'"/>');
   // Force a compact A4 portrait page, including conservative header/footer distances.
   // Keep unrelated section settings and all letterhead artwork intact.
   xml=xml.replace(/<w:pgSz\b([^>]*)\/>/g,(tag,attrs)=>{
