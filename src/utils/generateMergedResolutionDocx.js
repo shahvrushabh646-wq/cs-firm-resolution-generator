@@ -91,7 +91,7 @@ function buildResolutionXmlSnippet(content, placeholders = {}) {
 
   // Detect pre-built WordprocessingML BEFORE substitutions. Never run placeholder
   // replacement across XML tags or attributes; replace only the text-node contents.
-  if (/^<(?:w:p|w:tbl|w:table)\\b/i.test(trimmedContent)) {
+  if (/^<(?:w:p|w:tbl|w:table)\b/i.test(trimmedContent)) {
     return replaceTextNodeContents(trimmedContent, placeholders);
   }
 
