@@ -94,3 +94,5 @@
   .signature-preview{margin-top:9px}
   .warning{display:none}
 }
+/* Final DOCX preview: renders the exact generated file used for download. */
+.final-docx-preview{margin-top:18px;padding:16px;border:1px solid #d7e2f0;border-radius:12px;background:#f8fafc;min-width:0;overflow:hidden}.final-docx-preview-head{margin-bottom:12px}.final-docx-preview-head h4{margin:0 0 5px;color:#142b4a;font-size:16px}.final-docx-preview-head p{margin:0;color:#687b96;font-size:12px;line-height:1.5}.generated-docx-render{max-height:780px;overflow:auto;background:#e9eef5;border:1px solid #dbe4ef;border-radius:8px;padding:12px}.generated-docx-render .docx-wrapper{padding:12px!important;background:#e9eef5!important}.generated-docx-render section.docx{margin:0 auto 14px!important;box-shadow:0 2px 8px #15223818!important}.generated-docx-render .docx-page{background:white}.final-docx-preview .preview-disclaimer{margin:10px 0 0;font-size:11px;line-height:1.45;color:#71839c}.generated-docx-render .preview-error{padding:12px;color:#8a3d2b;background:#fff4ef;border-radius:6px}
