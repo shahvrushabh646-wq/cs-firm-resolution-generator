@@ -11,69 +11,92 @@ function escapeXml(value) {
 }
 
 function normalizePlaceholders(placeholders = {}) {
+  const company = placeholders.COMPANY_NAME ?? placeholders.companyName ?? '';
+  const director =
+    placeholders.DIRECTOR_NAME ??
+    placeholders.SIGNATORY_NAME ??
+    placeholders.directorName ??
+    placeholders.signatoryName ??
+    '';
   return {
     ...placeholders,
-    COMPANY_NAME: placeholders.COMPANY_NAME || 'BIT4ID INDIA PRIVATE LIMITED',
-    DIRECTOR_NAME:
-      placeholders.DIRECTOR_NAME ||
-      placeholders.SIGNATORY_NAME ||
-      placeholders.directorName ||
-      'xyz',
-    SIGNATORY_NAME:
-      placeholders.SIGNATORY_NAME ||
-      placeholders.DIRECTOR_NAME ||
-      placeholders.signatoryName ||
-      placeholders.directorName ||
-      'xyz',
-    DESIGNATION: placeholders.DESIGNATION || placeholders.designation || 'Director',
+    COMPANY_NAME: company,
+    DIRECTOR_NAME: director,
+    SIGNATORY_NAME: placeholders.SIGNATORY_NAME ?? director,
+    DESIGNATION: placeholders.DESIGNATION ?? placeholders.designation ?? 'Director',
     DIN: placeholders.DIN ?? placeholders.din ?? '',
   };
 }
 
-function replacePlaceholders(text, placeholders = {}) {
+function replaceLiteralTokens(text, placeholders = {}) {
   let result = String(text ?? '');
   const plc = normalizePlaceholders(placeholders);
-  const company = plc.COMPANY_NAME;
-  const director = plc.DIRECTOR_NAME || plc.SIGNATORY_NAME;
-  const designation = plc.DESIGNATION;
-  const din = plc.DIN;
+  const company = String(plc.COMPANY_NAME ?? '');
+  const director = String(plc.DIRECTOR_NAME || plc.SIGNATORY_NAME || '');
+  const designation = String(plc.DESIGNATION ?? 'Director');
+  const din = String(plc.DIN ?? '');
 
-  result = result.replace(/WAM\s+INDIA\s+PRIVATE\s+LIMITED/gi, String(company));
-  result = result.replace(/BIT4ID\s+INDIA\s+PRIVATE\s+LIMITED/gi, String(company));
-  result = result.replace(/\[COMPANY_NAME\]/gi, String(company));
-
-  result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, String(director));
-  result = result.replace(/Luigi\s+Bordonaro/gi, String(director));
-  result = result.replace(/\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\]/gi, String(director));
-  result = result.replace(/\[Signatory\s*name\]/gi, String(director));
-
-  if (din !== '') {
-    result = result.replace(/03095710/g, String(din));
-    // Escape the brackets: /[DIN]/ would incorrectly match individual characters.
-    result = result.replace(/\[DIN\]/gi, String(din));
+  // Replace legacy sample text only when the relevant master value is supplied.
+  if (company) {
+    result = result.replace(/WAM\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/BIT4ID\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/\\[COMPANY_NAME\\]/gi, company);
   }
-  result = result.replace(/MANAGING\s+DIRECTOR/gi, String(designation));
-  result = result.replace(/\[DESIGNATION\]/gi, String(designation));
+  if (director) {
+    result = result.replace(/Mr\\.?\\s*Luigi\\s*Bordonaro/gi, director);
+    result = result.replace(/Luigi\\s+Bordonaro/gi, director);
+    result = result.replace(/\\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\\]/gi, director);
+    result = result.replace(/\\[Signatory\\s*name\\]/gi, director);
+  }
+  if (din) {
+    result = result.replace(/03095710/g, din);
+    result = result.replace(/\\[DIN\\]/gi, din);
+  }
+  result = result.replace(/MANAGING\\s+DIRECTOR/gi, designation);
+  result = result.replace(/\\[DESIGNATION\\]/gi, designation);
 
   for (const [key, value] of Object.entries(placeholders || {})) {
     if (value === undefined || value === null || value === '') continue;
-    result = result.split('[' + key + ']').join(String(value));
+    // Only treat the key as a literal placeholder, not as a regular expression.
+    const token = new RegExp('\\\\[' + escapeRegExp(key) + '\\\\]', 'gi');
+    result = result.replace(token, String(value));
   }
   return result;
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+}
+
+/**
+ * Replace text inside Word text nodes only. This prevents replacement values
+ * containing &, <, or > from corrupting document.xml markup.
+ */
+function replaceTextNodeContents(xml, placeholders = {}) {
+  return xml.replace(/(<w:t\\b[^>]*>)([\\s\\S]*?)(<\\/w:t>)/g, (whole, open, rawText, close) => {
+    // Decode the five XML entities before substitutions, then safely re-escape.
+    const decoded = rawText
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&');
+    return open + escapeXml(replaceLiteralTokens(decoded, placeholders)) + close;
+  });
+}
+
 function buildResolutionXmlSnippet(content, placeholders = {}) {
-  const processed = replacePlaceholders(content, placeholders);
+  const processed = replaceLiteralTokens(content, placeholders);
   const trimmedContent = processed.trim();
 
-  // The legacy caller may already provide formatted WordprocessingML.
-  if (/^<(?:w:p|w:table|w:tbl)\b/i.test(trimmedContent)) {
-    return trimmedContent;
+  // Content already formatted as WordprocessingML should not be escaped as plain text.
+  if (/^<(?:w:p|w:tbl|w:table)\\b/i.test(trimmedContent)) {
+    // Restrict substitutions to text nodes so replacement values cannot damage XML tags.
+    return replaceTextNodeContents(trimmedContent, placeholders);
   }
 
-  const lines = processed.split(/\r?\n/);
-  let xml = '<w:p><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr></w:p>';
-
+  const lines = processed.split(/\\r?\\n/);
+  let xml = '';
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -87,31 +110,12 @@ function buildResolutionXmlSnippet(content, placeholders = {}) {
   return xml;
 }
 
-function replaceXmlPlaceholder(xml, key, value) {
-  return xml.split('[' + key + ']').join(escapeXml(value));
-}
-
+/**
+ * Replace legacy names and placeholders within Word text nodes only.
+ * XML tags and attributes are deliberately left untouched.
+ */
 function replaceLetterheadText(xml, placeholders = {}) {
-  let result = xml;
-  const plc = normalizePlaceholders(placeholders);
-  const company = plc.COMPANY_NAME;
-  const director = plc.DIRECTOR_NAME || plc.SIGNATORY_NAME;
-  const designation = plc.DESIGNATION;
-  const din = plc.DIN;
-
-  result = result.replace(/WAM\s+INDIA\s+PRIVATE\s+LIMITED/gi, escapeXml(company));
-  result = result.replace(/BIT4ID\s+INDIA\s+PRIVATE\s+LIMITED/gi, escapeXml(company));
-  result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, escapeXml(director));
-  result = result.replace(/Luigi\s+Bordonaro/gi, escapeXml(director));
-  result = result.replace(/MANAGING\s+DIRECTOR/gi, escapeXml(designation));
-  if (din !== '') result = result.replace(/03095710/g, escapeXml(din));
-
-  for (const [key, value] of Object.entries(plc)) {
-    if (value !== undefined && value !== null && value !== '') {
-      result = replaceXmlPlaceholder(result, key, value);
-    }
-  }
-  return result;
+  return replaceTextNodeContents(xml, placeholders);
 }
 
 /**
@@ -144,6 +148,9 @@ export async function generateMergedResolutionDocx(
   if (!letterheadBase64) {
     throw new Error('Letterhead file data is missing. Please select a company with an uploaded Word letterhead.');
   }
+  if (resolutionContent === undefined || resolutionContent === null || String(resolutionContent).trim() === '') {
+    throw new Error('Resolution content is empty. Please add the resolution wording before generating the DOCX.');
+  }
 
   const letterheadBuffer = base64ToArrayBuffer(letterheadBase64);
   const letterheadZip = await JSZip.loadAsync(letterheadBuffer);
@@ -157,30 +164,30 @@ export async function generateMergedResolutionDocx(
 
   let resolutionXml = buildResolutionXmlSnippet(resolutionContent, replacements);
   resolutionXml = resolutionXml
-    .replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g, '')
-    .replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g, '')
-    .replace(/<w:spacing\b([^>]*)\/\s*>/g, (tag, attrs) => {
+    .replace(/<w:br\\b(?=[^>]*\\bw:type="page")[^>]*\\/\\s*>/g, '')
+    .replace(/<w:pageBreakBefore\\b[^>]*\\/\\s*>/g, '')
+    .replace(/<w:spacing\\b([^>]*)\\/\\s*>/g, (tag, attrs) => {
       const clean = attrs
-        .replace(/\s+w:before="[^"]*"/g, '')
-        .replace(/\s+w:after="[^"]*"/g, '')
-        .replace(/\s+w:line="[^"]*"/g, '')
-        .replace(/\s+w:lineRule="[^"]*"/g, '');
+        .replace(/\\s+w:before="[^"]*"/g, '')
+        .replace(/\\s+w:after="[^"]*"/g, '')
+        .replace(/\\s+w:line="[^"]*"/g, '')
+        .replace(/\\s+w:lineRule="[^"]*"/g, '');
       return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
     });
 
-  const bodyOpenMatch = documentXml.match(/<w:body\b[^>]*>/);
+  const bodyOpenMatch = documentXml.match(/<w:body\\b[^>]*>/);
   const bodyCloseIndex = documentXml.lastIndexOf('</w:body>');
   if (
     !bodyOpenMatch ||
     bodyCloseIndex === -1 ||
     bodyCloseIndex < bodyOpenMatch.index + bodyOpenMatch[0].length
   ) {
-    throw new Error('Invalid Word document structure: </w:body> not found.');
+    throw new Error('Invalid Word document structure: <w:body> closing tag not found.');
   }
 
   const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
   const bodyContent = documentXml.slice(bodyOpenIndex, bodyCloseIndex);
-  const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)/g)];
+  const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/w:sectPr>)/g)];
   const insertAt = sectionMatches.length
     ? bodyOpenIndex + sectionMatches[sectionMatches.length - 1].index
     : bodyCloseIndex;
