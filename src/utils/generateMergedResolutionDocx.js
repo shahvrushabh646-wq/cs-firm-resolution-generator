@@ -38,9 +38,11 @@ function replaceLiteralTokens(text, placeholders = {}) {
 
   // Replace legacy sample text only when the relevant master value is supplied.
   if (company) {
-    result = result.replace(/WAM\s+INDIA\s+PRIVATE\s+LIMITED/gi, company);
-    result = result.replace(/BIT4ID\s+INDIA\s+PRIVATE\s+LIMITED/gi, company);
-    result = result.replace(/\[COMPANY_NAME\]/gi, company);
+    result = result.replace(/WAM\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/BIT4ID\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/WM\\s+THERMOFORMING\\s+MACHINES\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/CAENSPA\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
+    result = result.replace(/\\[COMPANY_NAME\\]/gi, company);
   }
   if (director) {
     result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, director);
