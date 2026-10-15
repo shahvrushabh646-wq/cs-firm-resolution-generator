@@ -144,7 +144,7 @@ function App(){
    if(company.registeredOffice) paragraphs.push(new Paragraph({text:`Registered Office: ${company.registeredOffice}`,alignment:AlignmentType.CENTER}));
   }
   paragraphs.push(new Paragraph({text:'',spacing:{after:120}}));
-  paragraphs.push(new Paragraph({text:template.title||'BOARD RESOLUTION',alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_1,spacing:{after:60}}));
+  if(template.title&&String(template.title).trim().toUpperCase()!=='BOARD RESOLUTION') paragraphs.push(new Paragraph({text:template.title,alignment:AlignmentType.CENTER,heading:HeadingLevel.HEADING_1,spacing:{after:60}}));
   if(template.subtitle) paragraphs.push(new Paragraph({text:template.subtitle,alignment:AlignmentType.CENTER,spacing:{after:120}}));
   for(const para of bodyText.split(/\n\s*\n/).filter(part=>part.trim())){
    paragraphs.push(new Paragraph({children:[new TextRun({text:para.trim(),font:'Times New Roman',size:22})],alignment:AlignmentType.JUSTIFIED,spacing:{before:0,after:100,line:260}}));
