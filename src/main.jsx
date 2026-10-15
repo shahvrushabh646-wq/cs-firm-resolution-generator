@@ -65,7 +65,7 @@ async function makeLetterheadMaster(letterheadBase64,templateBase64,replacements
   return '<w:p><w:pPr>'+align+spacing+'</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'+bold+'<w:sz w:val="'+size+'"/></w:rPr><w:t xml:space="preserve">'+content+'</w:t></w:r></w:p>';
  };
  const resolutionParts=[];
- if(template?.title) resolutionParts.push(paragraph(template.title,{align:'center',bold:true,size:26,after:70}));
+ if(template?.title && String(template.title).trim().toUpperCase() !== 'BOARD RESOLUTION') resolutionParts.push(paragraph(template.title,{align:'center',bold:true,size:26,after:70}));
  if(template?.subtitle) resolutionParts.push(paragraph(template.subtitle,{align:'center',size:22,after:100}));
  const body=resolveText(template?.body||'');
  if(!body.trim()) throw new Error('The resolution template has no resolution wording to append.');
