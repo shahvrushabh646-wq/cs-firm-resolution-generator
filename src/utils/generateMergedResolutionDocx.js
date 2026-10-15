@@ -98,16 +98,28 @@ function buildResolutionXmlSnippet(content, placeholders = {}) {
   const processed = replaceLiteralTokens(rawContent, placeholders);
   const lines = processed.split(/\r?\n/);
   let xml = '';
+
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      xml += '<w:p><w:pPr><w:spacing w:after="0" w:line="220" w:lineRule="auto"/></w:pPr></w:p>';
+    const cleaned = line.trim();
+
+    // Keep blank lines as spacing paragraphs instead of joining adjacent text.
+    if (!cleaned) {
+      xml += '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>';
       continue;
     }
-    xml += '<w:p><w:pPr><w:spacing w:before="0" w:after="80" w:line="240" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">' +
-      escapeXml(trimmed) +
-      '</w:t></w:r></w:p>';
+
+    // Simple all-caps headings are centered and bold; ordinary lines stay justified.
+    const isHeading = cleaned === cleaned.toLocaleUpperCase() && /[A-Z]/.test(cleaned) && cleaned.length < 80;
+    const alignment = isHeading ? 'center' : 'both';
+    const boldRun = isHeading ? '<w:b/>' : '';
+    const afterSpacing = isHeading ? '160' : '120';
+
+    xml +=
+      '<w:p><w:pPr><w:spacing w:before="0" w:after="' + afterSpacing + '" w:line="276" w:lineRule="auto"/><w:jc w:val="' + alignment + '"/></w:pPr>' +
+      '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/>' + boldRun + '</w:rPr>' +
+      '<w:t xml:space="preserve">' + escapeXml(cleaned) + '</w:t></w:r></w:p>';
   }
+
   return xml;
 }
 
