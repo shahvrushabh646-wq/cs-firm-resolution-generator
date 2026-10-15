@@ -38,34 +38,34 @@ function replaceLiteralTokens(text, placeholders = {}) {
 
   // Replace legacy sample text only when the relevant master value is supplied.
   if (company) {
-    result = result.replace(/WAM\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
-    result = result.replace(/BIT4ID\\s+INDIA\\s+PRIVATE\\s+LIMITED/gi, company);
-    result = result.replace(/\\[COMPANY_NAME\\]/gi, company);
+    result = result.replace(/WAM\s+INDIA\s+PRIVATE\s+LIMITED/gi, company);
+    result = result.replace(/BIT4ID\s+INDIA\s+PRIVATE\s+LIMITED/gi, company);
+    result = result.replace(/\[COMPANY_NAME\]/gi, company);
   }
   if (director) {
-    result = result.replace(/Mr\\.?\\s*Luigi\\s*Bordonaro/gi, director);
-    result = result.replace(/Luigi\\s+Bordonaro/gi, director);
-    result = result.replace(/\\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\\]/gi, director);
-    result = result.replace(/\\[Signatory\\s*name\\]/gi, director);
+    result = result.replace(/Mr\.?\s*Luigi\s*Bordonaro/gi, director);
+    result = result.replace(/Luigi\s+Bordonaro/gi, director);
+    result = result.replace(/\[(?:DIRECTOR_NAME|SIGNATORY_NAME)\]/gi, director);
+    result = result.replace(/\[Signatory\s*name\]/gi, director);
   }
   if (din) {
     result = result.replace(/03095710/g, din);
-    result = result.replace(/\\[DIN\\]/gi, din);
+    result = result.replace(/\[DIN\]/gi, din);
   }
-  result = result.replace(/MANAGING\\s+DIRECTOR/gi, designation);
-  result = result.replace(/\\[DESIGNATION\\]/gi, designation);
+  result = result.replace(/MANAGING\s+DIRECTOR/gi, designation);
+  result = result.replace(/\[DESIGNATION\]/gi, designation);
 
   for (const [key, value] of Object.entries(placeholders || {})) {
     if (value === undefined || value === null || value === '') continue;
     // Only treat the key as a literal placeholder, not as a regular expression.
-    const token = new RegExp('\\\\[' + escapeRegExp(key) + '\\\\]', 'gi');
+    const token = new RegExp('\\[' + escapeRegExp(key) + '\\]', 'gi');
     result = result.replace(token, String(value));
   }
   return result;
 }
 
 function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -73,7 +73,7 @@ function escapeRegExp(value) {
  * containing &, <, or > from corrupting document.xml markup.
  */
 function replaceTextNodeContents(xml, placeholders = {}) {
-  return xml.replace(/(<w:t\\b[^>]*>)([\\s\\S]*?)(<\\/w:t>)/g, (whole, open, rawText, close) => {
+  return xml.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g, (whole, open, rawText, close) => {
     // Decode the five XML entities before substitutions, then safely re-escape.
     const decoded = rawText
       .replace(/&lt;/g, '<')
@@ -90,12 +90,12 @@ function buildResolutionXmlSnippet(content, placeholders = {}) {
   const trimmedContent = processed.trim();
 
   // Content already formatted as WordprocessingML should not be escaped as plain text.
-  if (/^<(?:w:p|w:tbl|w:table)\\b/i.test(trimmedContent)) {
+  if (/^<(?:w:p|w:tbl|w:table)\b/i.test(trimmedContent)) {
     // Restrict substitutions to text nodes so replacement values cannot damage XML tags.
     return replaceTextNodeContents(trimmedContent, placeholders);
   }
 
-  const lines = processed.split(/\\r?\\n/);
+  const lines = processed.split(/\r?\n/);
   let xml = '';
   for (const line of lines) {
     const trimmed = line.trim();
@@ -164,18 +164,18 @@ export async function generateMergedResolutionDocx(
 
   let resolutionXml = buildResolutionXmlSnippet(resolutionContent, replacements);
   resolutionXml = resolutionXml
-    .replace(/<w:br\\b(?=[^>]*\\bw:type="page")[^>]*\\/\\s*>/g, '')
-    .replace(/<w:pageBreakBefore\\b[^>]*\\/\\s*>/g, '')
-    .replace(/<w:spacing\\b([^>]*)\\/\\s*>/g, (tag, attrs) => {
+    .replace(/<w:br\b(?=[^>]*\bw:type="page")[^>]*\/\s*>/g, '')
+    .replace(/<w:pageBreakBefore\b[^>]*\/\s*>/g, '')
+    .replace(/<w:spacing\b([^>]*)\/\s*>/g, (tag, attrs) => {
       const clean = attrs
-        .replace(/\\s+w:before="[^"]*"/g, '')
-        .replace(/\\s+w:after="[^"]*"/g, '')
-        .replace(/\\s+w:line="[^"]*"/g, '')
-        .replace(/\\s+w:lineRule="[^"]*"/g, '');
+        .replace(/\s+w:before="[^"]*"/g, '')
+        .replace(/\s+w:after="[^"]*"/g, '')
+        .replace(/\s+w:line="[^"]*"/g, '')
+        .replace(/\s+w:lineRule="[^"]*"/g, '');
       return '<w:spacing' + clean + ' w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>';
     });
 
-  const bodyOpenMatch = documentXml.match(/<w:body\\b[^>]*>/);
+  const bodyOpenMatch = documentXml.match(/<w:body\b[^>]*>/);
   const bodyCloseIndex = documentXml.lastIndexOf('</w:body>');
   if (
     !bodyOpenMatch ||
@@ -187,7 +187,7 @@ export async function generateMergedResolutionDocx(
 
   const bodyOpenIndex = bodyOpenMatch.index + bodyOpenMatch[0].length;
   const bodyContent = documentXml.slice(bodyOpenIndex, bodyCloseIndex);
-  const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/w:sectPr>)/g)];
+  const sectionMatches = [...bodyContent.matchAll(/<w:sectPr\b[^>]*(?:\/>|>[\s\S]*?<\/w:sectPr>)/g)];
   const insertAt = sectionMatches.length
     ? bodyOpenIndex + sectionMatches[sectionMatches.length - 1].index
     : bodyCloseIndex;
