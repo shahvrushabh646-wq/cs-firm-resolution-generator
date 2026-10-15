@@ -91,40 +91,85 @@ function buildResolutionXmlSnippet(content, placeholders = {}) {
   const rawContent = String(content ?? '');
   const trimmedContent = rawContent.trim();
 
-  // Detect pre-built WordprocessingML BEFORE substitutions. Never run placeholder
-  // replacement across XML tags or attributes; replace only the text-node contents.
+  // If the caller supplied WordprocessingML, preserve its structure and only
+  // replace text-node values. Never run substitutions across XML tags/attributes.
   if (/^<(?:w:p|w:tbl|w:table)\b/i.test(trimmedContent)) {
     return replaceTextNodeContents(trimmedContent, placeholders);
   }
 
   const processed = replaceLiteralTokens(rawContent, placeholders);
-  const lines = processed.split(/\r?\n/);
+  const blocks = processed.split(/\r?\n\s*\r?\n/);
   let xml = '';
 
-  for (const line of lines) {
-    const cleaned = line.trim();
+  for (const block of blocks) {
+    const cleanedBlock = block.trim();
+    if (!cleanedBlock) continue;
 
-    // Keep blank lines as spacing paragraphs instead of joining adjacent text.
-    if (!cleaned) {
-      xml += '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>';
-      continue;
+    const lines = cleanedBlock.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const firstLine = lines[0];
+    const upper = firstLine === firstLine.toLocaleUpperCase() &&
+      /[A-Z]/.test(firstLine) && firstLine.length < 85;
+    const isResolutionClause = /^(RESOLVED\s+(?:FURTHER\s+)?THAT|RESOLVED\s+ALSO\s+THAT)\b/i.test(firstLine);
+    const isResolutionTitle = /^(BOARD\s+RESOLUTION|APPOINTMENT\s+OF\s+AUDITOR|APPOINTMENT\s+OF\s+STATUTORY\s+AUDITOR|SPECIAL\s+RESOLUTION|ORDINARY\s+RESOLUTION)\b/i.test(firstLine);
+    const isSignOff = /^(FOR\s+AND\s+ON\s+BEHALF|YOURS\s+FAITHFULLY|SIGNED\s+BY)\b/i.test(firstLine);
+    const isSignatureDetail = /^(DIN\s*:|DATE\s*:|PLACE\s*:|DESIGNATION\s*:)/i.test(firstLine);
+    const isCompanyName = /PRIVATE\s+LIMITED|LIMITED$/i.test(firstLine) && firstLine.length < 120;
+    const isHeading = isResolutionTitle || (upper && !isResolutionClause && !isSignOff && !isSignatureDetail && !isCompanyName);
+
+    let alignment = 'both';
+    let before = '0';
+    let after = '120';
+    let bold = false;
+    let keepNext = false;
+
+    if (isHeading) {
+      alignment = 'center';
+      before = '180';
+      after = '180';
+      bold = true;
+      keepNext = true;
+    } else if (isResolutionClause) {
+      alignment = 'both';
+      before = '80';
+      after = '140';
+    } else if (isSignOff) {
+      alignment = 'left';
+      before = '220';
+      after = '80';
+      keepNext = true;
+    } else if (isSignatureDetail) {
+      alignment = 'left';
+      after = '40';
+    } else if (isCompanyName) {
+      alignment = 'left';
+      after = '100';
+      bold = true;
+      keepNext = true;
     }
 
-    // Simple all-caps headings are centered and bold; ordinary lines stay justified.
-    const isHeading = cleaned === cleaned.toLocaleUpperCase() && /[A-Z]/.test(cleaned) && cleaned.length < 80;
-    const alignment = isHeading ? 'center' : 'both';
-    const boldRun = isHeading ? '<w:b/>' : '';
-    const afterSpacing = isHeading ? '160' : '120';
+    const pPr =
+      '<w:pPr>' +
+      '<w:spacing w:before="' + before + '" w:after="' + after + '" w:line="276" w:lineRule="auto"/>' +
+      '<w:jc w:val="' + alignment + '"/>' +
+      (keepNext ? '<w:keepNext/>' : '') +
+      '</w:pPr>';
 
-    xml +=
-      '<w:p><w:pPr><w:spacing w:before="0" w:after="' + afterSpacing + '" w:line="276" w:lineRule="auto"/><w:jc w:val="' + alignment + '"/></w:pPr>' +
-      '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/>' + boldRun + '</w:rPr>' +
-      '<w:t xml:space="preserve">' + escapeXml(cleaned) + '</w:t></w:r></w:p>';
+    let runs = '';
+    lines.forEach((line, index) => {
+      if (index > 0) runs += '<w:r><w:br/></w:r>';
+      runs += '<w:r><w:rPr>' +
+        '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>' +
+        '<w:sz w:val="24"/><w:szCs w:val="24"/>' +
+        (bold ? '<w:b/><w:bCs/>' : '') +
+        '</w:rPr><w:t xml:space="preserve">' + escapeXml(line) + '</w:t></w:r>';
+    });
+
+    xml += '<w:p>' + pPr + runs + '</w:p>';
   }
 
   return xml;
 }
-
 /**
  * Replace legacy names and placeholders within Word text nodes only.
  * XML tags and attributes are deliberately left untouched.
