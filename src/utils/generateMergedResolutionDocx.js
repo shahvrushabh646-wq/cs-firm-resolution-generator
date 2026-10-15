@@ -86,15 +86,16 @@ function replaceTextNodeContents(xml, placeholders = {}) {
 }
 
 function buildResolutionXmlSnippet(content, placeholders = {}) {
-  const processed = replaceLiteralTokens(content, placeholders);
-  const trimmedContent = processed.trim();
+  const rawContent = String(content ?? '');
+  const trimmedContent = rawContent.trim();
 
-  // Content already formatted as WordprocessingML should not be escaped as plain text.
-  if (/^<(?:w:p|w:tbl|w:table)\b/i.test(trimmedContent)) {
-    // Restrict substitutions to text nodes so replacement values cannot damage XML tags.
+  // Detect pre-built WordprocessingML BEFORE substitutions. Never run placeholder
+  // replacement across XML tags or attributes; replace only the text-node contents.
+  if (/^<(?:w:p|w:tbl|w:table)\\b/i.test(trimmedContent)) {
     return replaceTextNodeContents(trimmedContent, placeholders);
   }
 
+  const processed = replaceLiteralTokens(rawContent, placeholders);
   const lines = processed.split(/\r?\n/);
   let xml = '';
   for (const line of lines) {
